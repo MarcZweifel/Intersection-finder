@@ -8,27 +8,42 @@ img_scaled = img_orig.scale_image(0.25)
 
 
 
-seq = imgprc.sequence([
+preseq = imgprc.sequence([
     imgprc.bilateral_filtering(),
-    imgprc.binarization(threshold=90),
-    imgprc.rough_grid_finding()
+    imgprc.binarization(threshold=90)
     ])
 
-seq.load_image(img_scaled)
-seq.process_sequence()
-grid = seq.get_result()
+preseq.load(img_scaled)
+preseq.process()
+
+img_bin = preseq.get_result()
+
+gridfndr = imgprc.rough_grid_finding()
+gridfndr.load(img_bin)
+gridfndr.process()
+
+grid = gridfndr.get_result()
 grid = grid.scale_grid(image=img_orig)
 
 #grid.show_intersections()
 
 splitter = imgprc.subdividing(field_size=800)
-splitter.load_image(grid)
+splitter.load(grid)
 
-splitter.process_image()
+splitter.process()
 
-subimages = splitter.get_result()
+subgrid = splitter.get_result()[5,6]
 
-subimages[5, 6].show_intersections()
+subgrid.show_intersections()
 
+subimage = subgrid.image
 
+preseq.load(subimage)
+preseq.process()
+subgrid.image = preseq.get_result()
+refine = imgprc.vector_intersection()
+refine.load(subgrid)
 
+refine.process()
+grid_fine = refine.get_result()
+grid_fine.show_intersections()
