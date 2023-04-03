@@ -1,0 +1,504 @@
+import cv2 as cv
+import matplotlib.pyplot as plt
+import numpy as np
+
+
+class image_like():
+    def __init__(self, image_data, scale=1):
+        self.image_data = image_data
+        self.scale = scale
+
+class image_size():
+    def __init__(self, x_in, y_in):
+        self.x = x_in
+        self.y = y_in
+
+class image(image_like):
+    def __init__(self, image_data, scale=1):
+        super().__init__(image_data, scale)
+        x_in = self.image_data.shape[1]
+        y_in = self.image_data.shape[0]
+        self.image_size = image_size(x_in, y_in)
+        self.resolution = 1
+    
+    def scale_image(self,factor):
+        image_data = cv.resize(self.image_data, None, fx=factor, fy=factor)
+        scale = factor*self.scale
+        return image(image_data, scale)
+        
+    def show_image(self):
+        plt.imshow(self.image_data, "gray")
+        plt.show()
+            
+class grid(image_like):
+    """This subclass saves the grid line coordinated and calculates its intersection points together with the corresponding image class object."""
+
+    def __init__(self, grid_lines, image=None, origin=[0,0]):
+        super().__init__(grid_lines)
+
+        self.grid_data = [[j-origin[i] for j in self.image_data[i]] for i in [0,1]]
+        del self.image_data
+        self.intersections = np.array(np.meshgrid(self.grid_data[0], self.grid_data[1])) #
+
+        row_size = self.intersections.shape[1]
+        col_size = self.intersections.shape[2]
+
+        self.grid_size = image_size(col_size, row_size)
+
+        self.mask = np.full((row_size+2, col_size+2), False)
+        self.mask[:,(0, -1)] = True
+        self.mask[(0, -1), :] = True
+
+        self.image = image
+        self.scale = self.image.scale
+
+        self.origin = origin # [0,0] = top result[c, 0], positive directions are result[c, ] & down
+    
+    def show_grid(self):
+        pass
+
+    def show_intersections(self):
+        if self.image is not None:
+            plt.imshow(self.image.image_data, cmap="gray")
+        plt.plot(self.intersections[0], self.intersections[1], marker=".", color="r", linestyle="none")
+        plt.show()
+
+    def scale_grid(self, factor=1, image=None):
+        
+        if image is None:
+            image = self.image.scale_image(factor)
+            
+        else:
+            factor = image.scale/self.scale
+        
+        grid_data = [[j*factor for j in c] for c in self.grid_data]
+        origin_scaled = [c*factor for c in self.origin]
+
+        return grid(grid_data, image, origin=origin_scaled)
+    
+    def switch_point_state(self, x, y):
+        point_state = self.mask[x][y]
+
+        if point_state:
+            self.mask[x][y] = False
+        
+        else:
+            self.mask[x][y] = True
+
+class process():
+    """This base class is a general processor object for image processing."""
+
+    def __init__(self):
+        """Defines images from before and after the process."""
+
+        self.image_before = None
+        self.image_after = None
+
+        self.allowed_keys = ()
+    
+    def process_image(self):
+        """Method prototype for the processing routine."""
+        pass
+
+    def load_image(self, image):
+        """Loads the image input into the processor class."""
+
+        self.image_before = image
+
+    def set_parameters(self, **kwargs):
+        """Method prototype for changing the processor parameters."""
+        
+        self.__dict__.update((k, v) for k, v in kwargs.items() if k in self.allowed_keys)
+
+    def get_result(self):
+        return self.image_after
+
+class binarization(process):
+    """This subclass is the processor object for calculating a binary image with values 0 = black or 255 = white."""
+
+    def __init__(self, threshold=127):
+        super().__init__()
+
+        # Standard values
+        self.threshold = threshold
+        self.allowed_keys = ("threshold")
+    
+    def process_image(self):
+        """Processes binarized image if it's loaded into the processor."""
+        try:
+            image_data = cv.threshold(self.image_before.image_data, self.threshold, 255, cv.THRESH_BINARY)[1]
+            self.image_after = image(image_data, scale=self.image_before.scale)
+        
+        except:
+            print("No image is loaded into binarization processor")
+
+class bilateral_filtering(process):
+    """This subclass is the processor object for the bilateral image filter."""
+
+    def __init__(self, d=9, sigma_color=50):
+        """Adds the standard filter parameters."""
+
+        super().__init__()
+        self.d = d                      # Filter radius
+        self.sigma_color = sigma_color  # Color "radius"  
+
+        self.allowed_keys = ("d", "sigma_color")
+    
+    def process_image(self):
+        """Processes filtered image if it's loaded into the processor."""
+
+        try:
+            image_data = cv.bilateralFilter(self.image_before.image_data, self.d, self.sigma_color, None)
+            self.image_after = image(image_data, scale=self.image_before.scale)
+        
+        except:
+            print("No image is loaded into bilateral filter")
+
+class rough_grid_finding(process):
+    """This subclass roughly finds a grid of lines following the algorithm of Jim Green (https://ntrs.nasa.gov/citations/19940023403). However, the summation fields are located in the middle of the image."""
+
+    def __init__(self, field_size=200, line_thickness=20, threshold = 10000):
+        super().__init__()
+
+        # Standard values
+        self.field_size = field_size
+        self.line_thickness = line_thickness
+        self.line_distance = 400
+        self.threshold = threshold
+
+        self.allowed_keys = ("field_size", "line_thickness", "threshold")
+    
+    def process_image(self):
+        """Finds the grid of lines."""
+
+        x_lines = self.find_lines('mh')
+        y_lines = self.find_lines('mv')
+        self.image_after = grid([x_lines, y_lines], image=self.image_before)
+
+    def find_lines(self, location):
+        """Finds the lines by searching in the specified location. Location can be "mh", "mv", "n", "e", "s", "w". """
+
+        if self.image_before is None:
+            print("Load an image!")
+            return
+
+        axis_size_dir = {
+            "mh":"y",
+            "mv":"x",
+            "n":"y",
+            "e":"x",
+            "s":"y",
+            "w":"x"
+        }[location]
+
+        size = getattr(
+            self.image_before.image_size, 
+            axis_size_dir, 
+            "Specifiy location as 'mh', 'mv', 'n', 'e', 's', 'w'!")
+        
+        axis_num = {"x":1, "y":0}[axis_size_dir]
+
+        if location=="mh" or location=="mv":
+            
+            middle = (size-1)//2
+            result = [middle-self.field_size//2, middle+self.field_size//2]
+
+            if location == "mh":
+                field = self.image_before.image_data[result[0]:result[1], :]
+
+            elif location == "mv":
+                field = self.image_before.image_data[:, result[0]:result[1]]
+        
+        elif location=="n" or location=="w":
+            result = [0, self.field_size-1]
+
+            if location == "n":
+                field = self.image_before.image_data[result[0]:result[1],:]
+
+            elif location == "w":
+                field = self.image_before.image_data[:, result[0]:result[1]] 
+        
+        elif location=="e" or location=="s":
+            result = [size-1-self.field_size, size-1]
+
+            if location == "s":
+                field = self.image_before.image_data[result[0]:result[1],:]
+
+            elif location == "e":
+                field = self.image_before.image_data[:, result[0]:result[1]] 
+
+
+        sum = np.sum(field, axis=axis_num)
+
+        axis_size_dir = {
+            "mh":"x",
+            "mv":"y",
+            "n":"x",
+            "e":"y",
+            "s":"x",
+            "w":"y"
+        }[location]
+
+        size = getattr(
+            self.image_before.image_size, 
+            axis_size_dir, 
+            "Specifiy location as 'mh', 'mv', 'n', 'e', 's', 'w'!")
+
+        c = 0
+        temp = [0, 0]
+
+        result = []
+
+        while c < size:
+            if sum[c] > self.threshold:
+                temp[0] = c
+                for j in range(c+self.line_thickness*3, c, -1):
+                    if j >= size:
+                        continue
+                    if sum[j] > self.threshold:
+                        temp[1] = j
+                        break
+                
+                result.append((temp[0] + temp[1])//2)
+                c = c + self.line_thickness*3 - 1
+            c = c + 1
+        
+        return np.array(result)
+ 
+
+class sequence(process):
+    """This subclass is the processor object for a sequential combination of processes."""
+
+    def __init__(self, sequence=[]):
+        """Creates a list containing the sequential processes."""
+
+        super().__init__()
+        self.sequence = sequence
+    
+    def process_sequence(self):
+        """Processes the image after the whole sequence."""
+        if not self.sequence: # If sequence is empty
+            return
+
+        self._process_partial_sequence(0)
+
+    def _process_element(self, idx):
+        """Processes a single sequence element."""
+
+        self._transfer_image(idx)
+        self.sequence[idx].process_image()
+
+    def _process_partial_sequence(self, idx):
+        """Processes the sequence starting from specified index."""
+
+        for c in range(idx, len(self.sequence)):
+            self._process_element(c)
+        
+        self.image_after = self.sequence[-1].get_result()
+
+    def _transfer_image(self, idx):
+        """Transfers the result from previous process to process with specified index."""
+        if not self.sequence:
+            return
+
+        if idx==0:
+            self.sequence[0].load_image(self.image_before) # Load sequence input into appended process
+        
+        else:
+            self.sequence[idx].load_image(self.sequence[idx-1].get_result()) # Load result from previous process into appended process
+
+    def append(self, process):
+        """Appends a process at the end of the sequence."""
+
+        self.sequence.append(process)
+        self._transfer_image(-1)
+
+    def pop(self, idx, recalculate):
+        """Removes the process with specified index from the sequence and recalculates the following sequence if recalculate is True."""
+
+        self.sequence.pop(idx)
+        self-_transfer_image(idx)
+
+        if recalculate:
+            _process_partial_sequence(idx)
+
+        
+    
+    def insert(self, idx, process, recalculate):
+        """Inserts a process at the specified index and recalculates the rest of the sequence if recalculate is True."""
+
+        self.sequence.insert(idx, process)
+        self._transfer_image(idx)
+
+        if recalculate:
+            self._process_partial_sequence(idx)
+    
+    def set_parameters(self, idx, **kwargs):
+        self.sequence[idx].set_parameters(**kwargs)
+
+class subdividing(process):
+    """This subclass subdivides an image with the given grid points. The border of the local image is given by the middle between two gridpoints, the global image edge or the symmetrical distance from the gridpoint. If the optional field size argument controls the side length of the local image if it is given."""
+
+    def __init__(self, field_size=None):
+        super().__init__()
+        # image_before as grid with image
+        # image_after as list of local images
+
+        self.field_size = field_size # optional argument
+        self.image_after = []
+
+        self.allowed_keys = ("field_size")
+
+    def process_image(self):
+        col_size = self.image_before.grid_size.x
+        row_size = self.image_before.grid_size.y
+
+        self.image_after = np.full((row_size, col_size), None)
+
+        for row in range(self.image_before.grid_size.y):
+            for col in range(self.image_before.grid_size.x):
+                
+                if self.field_size is None:
+                    span = self.find_split([row, col])
+                else:
+                    span = self.find_field([row, col], self.field_size)
+                
+                if span.any():
+                    subimage = self.extract_subimage(span)
+                    suborigin = span[:,0]
+                    gridpoint = [[self.image_before.intersections[i,row, col]] for i in [0,1]]
+                    self.image_after[row, col] = grid(gridpoint, image=subimage, origin=suborigin)
+    
+    def find_split(self, gridpoint):
+        result = np.zeros((2, 2)) # [xspan, yspan]
+        row = gridpoint[0]
+        col = gridpoint[1]
+
+        mask_row = row+1
+        mask_col = col+1
+        point_mask = self.image_before.mask[mask_row, mask_col]
+        
+        if point_mask:
+            return []
+
+        kernel_mask = np.copy(self.image_before.mask[mask_row-1:mask_row+2, mask_col-1:mask_col+2])
+        point = self.image_before.intersections[:, row, col]
+        
+        idx = {
+            0:[1,0, 1,-1],
+            1:[0,1, -1,1]
+        }
+
+        for c in [0,1]:
+            
+            image_size = getattr(self.image_before.image.image_size, {0:"x", 1:"y"}[c])
+            grid_size = getattr(self.image_before.grid_size, {0:"x", 1:"y"}[c])
+
+            field_size = image_size/(grid_size+1)
+
+            if not kernel_mask[idx[c][0],idx[c][1]]:
+                point_min = self.image_before.intersections[c, row-c, col-1+c]
+                result[c, 0] = (point[c] + point_min)//2
+    
+                if kernel_mask[idx[c][2],idx[c][3]]:
+                    result[c, 1] = 2*point[c]-result[c, 0]
+    
+            if not kernel_mask[idx[c][2],idx[c][3]]:
+                point_max = self.image_before.intersections[c, row+c, col+1-c]
+                result[c, 1] = (point[c] + point_max)//2
+    
+                if kernel_mask[idx[c][0],idx[c][1]]:
+                    result[c, 0] = 2*point[c]-result[c, 1]
+            
+            if kernel_mask[idx[c][1],idx[c][2]] and kernel_mask[idx[c][2],idx[c][3]]:
+                result[c, 0] = point[c]-field_size//2
+                result[c, 1] = point[c]+field_size//2
+            
+            
+            result[c, 0] = self.fit_to_image(result[c, 0], image_size)
+            result[c, 1] = self.fit_to_image(result[c, 1], image_size)
+            return result
+        
+    
+    def find_field(self, gridpoint, field_size):
+        result = np.zeros((2,2)) # [x_span, y_span]
+
+        row = gridpoint[0]
+        col = gridpoint[1]
+
+        mask_row = row+1
+        mask_col = col+1
+
+        if self.image_before.mask[mask_row, mask_col]:
+            return []
+
+        point = self.image_before.intersections[:,row, col]
+
+        for c in [0, 1]:
+            image_size = getattr(self.image_before.image.image_size, {0:"x", 1:"y"}[c])
+            
+            max = point[c]+field_size//2
+            min = point[c]-field_size//2
+
+            result[c, 0] = self.fit_to_image(min, image_size)
+            result[c, 1] = self.fit_to_image(max, image_size)
+        
+        return result
+    
+    def fit_to_image(self, index, size):
+
+        if index < 0:
+            index = 0
+        
+        elif index >= size:
+            index = size-1
+        
+        return index
+
+    def extract_subimage(self, result):        
+        x_min = int(result[0, 0])
+        x_max = int(result[0, 1])
+        y_min = int(result[1, 0])
+        y_max = int(result[1, 1])
+        
+        image_data = self.image_before.image.image_data[y_min:y_max, x_min:x_max]
+        return image(image_data=image_data, scale=self.image_before.scale)
+
+class refining(process):
+    """This subclass detects lines at local image edges and finds the intersection of the lines through vector geometry."""
+
+    def __init__(self):
+        super().__init__()
+
+        self.approx_point = None # Grid from line_finder
+
+        # image_after as exact point
+        # image_before local image from subdividing
+    
+    def process_image(self):
+        pass
+
+class vector_intersection(refining):
+
+    def __init__(self):
+        super().__init__()
+
+        pass
+
+class template_matching(refining):
+    """This subclass uses template matching to exactly find the intersection point of two lines locally. The algorithm is taken from Bessmeltsev et al. https://doi.org/10.3103/S8756699018040118."""
+
+    def __init__(self):
+        self.template
+        pass
+
+    def process_image(self):
+        pass
+
+    def create_template(self):
+        pass
+
+
+
+        
+
