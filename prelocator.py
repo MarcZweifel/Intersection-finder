@@ -3,7 +3,6 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 
 img_orig = cv.imread("Example_grids\\2023_03_14_#01_calibration_after0.tif", cv.IMREAD_GRAYSCALE)
-print(type(img_orig))
 img_orig = imgprc.image(img_orig)
 img_scaled = img_orig.scale_image(0.25)
 
