@@ -265,7 +265,7 @@ class rough_grid_finding(process):
                         temp[1] = j
                         break
                 
-                result.append((temp[0] + temp[1])//2)
+                result.append((temp[0] + temp[1])/2)
                 c = c + self.line_thickness*3 - 1
             c = c + 1
         
@@ -388,7 +388,7 @@ class subdividing(process):
             return []
 
         kernel_mask = np.copy(self.before.mask[mask_row-1:mask_row+2, mask_col-1:mask_col+2])
-        point = self.before.intersections[:, row, col]
+        point = self.before.intersections[:, row, col].astype(int)
         
         idx = {
             0:[1,0, 1,-1],
@@ -438,7 +438,7 @@ class subdividing(process):
         if self.before.mask[mask_row, mask_col]:
             return []
 
-        point = self.before.intersections[:,row, col]
+        point = self.before.intersections[:,row, col].astype(int)
 
         for c in [0, 1]:
             image_size = getattr(self.before.image.image_size, {0:"x", 1:"y"}[c])

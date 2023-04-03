@@ -32,7 +32,7 @@ splitter.load(grid)
 
 splitter.process()
 
-subgrid = splitter.get_result()[5,6]
+subgrid = splitter.get_result()[2,13]
 
 subgrid.show_intersections()
 
