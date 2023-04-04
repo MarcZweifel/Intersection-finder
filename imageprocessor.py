@@ -54,7 +54,7 @@ class grid(image_like):
 
         self.origin = origin # [0,0] = top result[c, 0], positive directions are result[c, ] & down
 
-    def show_intersections(self):
+    def select_intersections(self):
         fig, ax = plt.subplots()
         if self.image is not None:
             ax.imshow(self.image.image_data, cmap="gray")
@@ -96,6 +96,18 @@ class grid(image_like):
         fig.canvas.mpl_connect('button_release_event', on_release)
         plt.show()
 
+    def show_intersections(self):
+        if self.image is not None:
+            plt.imshow(self.image.image_data, cmap="gray")
+        
+        xv = self.intersections[0, :,:]
+        xv = xv[np.logical_not(self.mask[1:-1, 1:-1])]
+
+        yv = self.intersections[1, :,:]
+        yv = yv[np.logical_not(self.mask[1:-1, 1:-1])]
+
+        plt.plot(xv, yv, marker=".", color="r", linestyle="none")
+        plt.show()
 
 
     def scale_grid(self, factor=1, image=None):

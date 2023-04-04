@@ -24,7 +24,7 @@ gridfndr.process()
 
 grid = gridfndr.get_result()
 grid = grid.scale_grid(image=img_orig)
-grid.show_intersections()
+grid.select_intersections()
 
 
 splitter = imgprc.subdividing(field_size=800)
