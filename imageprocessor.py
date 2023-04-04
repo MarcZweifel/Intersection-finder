@@ -45,7 +45,7 @@ class grid(image_like):
 
         self.grid_size = image_size(col_size, row_size)
 
-        self.mask = np.full((row_size+2, col_size+2), False)
+        self.mask = np.full((row_size+2, col_size+2), True)
         self.mask[:,(0, -1)] = True
         self.mask[(0, -1), :] = True
 
@@ -55,10 +55,48 @@ class grid(image_like):
         self.origin = origin # [0,0] = top result[c, 0], positive directions are result[c, ] & down
 
     def show_intersections(self):
+        fig, ax = plt.subplots()
         if self.image is not None:
-            plt.imshow(self.image.image_data, cmap="gray")
-        plt.plot(self.intersections[0], self.intersections[1], marker=".", color="r", linestyle="none")
+            ax.imshow(self.image.image_data, cmap="gray")
+        ax.plot(self.intersections[0], self.intersections[1], marker=".", color="r", linestyle="none")
+        
+        result = []
+
+        def on_press(epress):
+            result.append([epress.xdata, epress.ydata])
+            
+
+        def on_release(erelease):
+            result.append([erelease.xdata, erelease.ydata])
+            x1, y1 = result[0]
+            x2, y2 = result[1]
+            
+            print(x1, y1)
+            print(x2, y2)
+            xmin, xmax = min(x1, x2), max(x1, x2)
+            ymin, ymax = min(y1, y2), max(y1, y2)
+
+            # Select the points within the box
+            selected = []
+
+            for row in range(self.intersections.shape[1]):
+                for col in range(self.intersections.shape[2]):
+                    x = self.intersections[0, row, col]
+                    y = self.intersections[1, row, col]
+
+                    if xmin<=x<=xmax and ymin<=y<=ymax:
+                        selected.append([row, col])
+            
+            selected = np.array(selected)
+
+            self.activate(selected)         
+
+        # Connect the onselect function to the figure
+        fig.canvas.mpl_connect('button_press_event', on_press)
+        fig.canvas.mpl_connect('button_release_event', on_release)
         plt.show()
+
+
 
     def scale_grid(self, factor=1, image=None):
         
@@ -73,14 +111,11 @@ class grid(image_like):
 
         return grid(grid_data, image, origin=origin_scaled)
     
-    def switch_point_state(self, x, y):
-        point_state = self.mask[x][y]
-
-        if point_state:
-            self.mask[x][y] = False
+    def activate(self, coords):
         
-        else:
-            self.mask[x][y] = True
+        for row in coords[:,0]:
+            for col in coords[:,1]:
+                self.mask[row+1][col+1] = False
     
     def copy(self):
         copy = grid(self.grid_data, image=self.image)
@@ -232,9 +267,9 @@ class rough_grid_finding(process):
 
         sum = np.sum(field, axis=axis_num)
 
-        plt.plot(sum)
-        plt.plot([0, len(sum)], [self.threshold, self.threshold])
-        plt.show()
+        # plt.plot(sum)
+        # plt.plot([0, len(sum)], [self.threshold, self.threshold])
+        # plt.show()
 
         axis_size_dir = {
             "mh":"x",
@@ -351,7 +386,6 @@ class subdividing(process):
         # after as list of local images
 
         self.field_size = field_size # optional argument
-        self.after = []
 
         self.allowed_keys = ("field_size")
 
@@ -369,7 +403,7 @@ class subdividing(process):
                 else:
                     span = self.find_field([row, col], self.field_size)
                 
-                if span.any():
+                if span is not None:
                     subimage = self.extract_subimage(span)
                     suborigin = span[:,0]
                     gridpoint = [[self.before.intersections[i,row, col]] for i in [0,1]]
@@ -385,7 +419,7 @@ class subdividing(process):
         point_mask = self.before.mask[mask_row, mask_col]
         
         if point_mask:
-            return []
+            return None
 
         kernel_mask = np.copy(self.before.mask[mask_row-1:mask_row+2, mask_col-1:mask_col+2])
         point = self.before.intersections[:, row, col].astype(int)
@@ -436,7 +470,7 @@ class subdividing(process):
         mask_col = col+1
 
         if self.before.mask[mask_row, mask_col]:
-            return []
+            return None
 
         point = self.before.intersections[:,row, col].astype(int)
 
@@ -472,7 +506,7 @@ class subdividing(process):
 
 class vector_intersection(process):
 
-    def __init__(self, field_size=50, line_thickness=20, threshold= 9000):
+    def __init__(self, field_size=50, line_thickness=30, threshold= 10000):
         super().__init__()
         # Before is subgrid with approximate point
         # After is same subgrid with refined point
@@ -494,13 +528,13 @@ class vector_intersection(process):
             field_size=self.field_size, threshold=self.threshold, line_thickness=self.line_thickness)
         linefndr.load(self.before.image)
         
-        n_x = linefndr.find_lines("n")
+        n_x = linefndr.find_lines("n")[0]
         n_y = 0
-        s_x = linefndr.find_lines("s")
+        s_x = linefndr.find_lines("s")[0]
         s_y = self.before.image.image_size.y-1
-        e_y = linefndr.find_lines("e")
+        e_y = linefndr.find_lines("e")[0]
         e_x = self.before.image.image_size.x-1
-        w_y = linefndr.find_lines("w")
+        w_y = linefndr.find_lines("w")[0]
         w_x = 0
 
         return np.array([
@@ -522,20 +556,25 @@ class vector_intersection(process):
                 (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4))
         return [[py], [px]]
 
-class template_matching(process):
-    """This subclass uses template matching to exactly find the intersection point of two lines locally. The algorithm is taken from Bessmeltsev et al. https://doi.org/10.3103/S8756699018040118."""
+class recombining(process):
 
-    def __init__(self):
-        self.template
-        pass
+    def __init__(self, orig_grid=None):
+        super().__init__()
 
-    def process_image(self):
-        pass
+        self.after = orig_grid
 
-    def create_template(self):
-        pass
+        self.allowed_keys = ("orig_grid")
 
+    
+    def process(self):
+            gridpoints = np.full_like(self.after.intersections, None)
 
+            for row in range(len(self.before)):
+                for col in range(len(self.before[row])):
+                    if self.before[row, col] is None:
+                        continue
 
-        
+                    grid = self.before[row, col]
+                    point = np.add(grid.intersections[:, 0, 0], grid.origin)
 
+                    self.after.intersections[:,row, col] = point

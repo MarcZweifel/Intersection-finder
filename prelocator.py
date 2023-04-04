@@ -24,26 +24,35 @@ gridfndr.process()
 
 grid = gridfndr.get_result()
 grid = grid.scale_grid(image=img_orig)
+grid.show_intersections()
 
-#grid.show_intersections()
 
 splitter = imgprc.subdividing(field_size=800)
 splitter.load(grid)
 
 splitter.process()
 
-subgrid = splitter.get_result()[2,13]
+subgrid = splitter.get_result()
 
-subgrid.show_intersections()
-
-subimage = subgrid.image
-
-preseq.load(subimage)
-preseq.process()
-subgrid.image = preseq.get_result()
 refine = imgprc.vector_intersection()
-refine.load(subgrid)
 
-refine.process()
-grid_fine = refine.get_result()
-grid_fine.show_intersections()
+for row in range(len(subgrid)):
+    for col in range(len(subgrid[row])):
+        if subgrid[row, col] is None:
+            continue
+
+        preseq.load(subgrid[row, col].image)
+        preseq.process()
+        subgrid[row, col].image = preseq.get_result()
+        
+        refine.load(subgrid[row, col])
+        refine.process()
+        subgrid[row, col] = refine.get_result()
+
+recombine = imgprc.recombining(orig_grid=grid)
+recombine.load(subgrid)
+recombine.process()
+
+final = recombine.get_result()
+final.show_intersections()
+
