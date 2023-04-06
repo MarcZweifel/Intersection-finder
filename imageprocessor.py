@@ -2,6 +2,7 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 import numpy as np
 
+debug_mode = False
 
 class image_like():
     def __init__(self, image_data, scale=1):
@@ -206,7 +207,7 @@ class bilateral_filtering(process):
 class rough_grid_finding(process):
     """This subclass roughly finds a grid of lines following the algorithm of Jim Green (https://ntrs.nasa.gov/citations/19940023403). However, the summation fields are located in the middle of the image."""
 
-    def __init__(self, field_size=200, line_thickness=20, threshold = 10000):
+    def __init__(self, field_size=200, line_thickness=20, threshold = 0.9, num_lines=None):
         super().__init__()
 
         # Standard values
@@ -214,8 +215,9 @@ class rough_grid_finding(process):
         self.line_thickness = line_thickness
         self.line_distance = 400
         self.threshold = threshold
+        self.num_lines = num_lines
 
-        self.allowed_keys = ("field_size", "line_thickness", "threshold")
+        self.allowed_keys = ("field_size", "line_thickness", "threshold", "num_lines")
     
     def process(self):
         """Finds the grid of lines."""
@@ -278,10 +280,15 @@ class rough_grid_finding(process):
 
 
         sum = np.sum(field, axis=axis_num)
+        sum = sum/max(sum)
 
-        # plt.plot(sum)
-        # plt.plot([0, len(sum)], [self.threshold, self.threshold])
-        # plt.show()
+        global debug_mode
+
+        if debug_mode:
+            plt.plot(sum)
+            plt.plot([0, len(sum)], [self.threshold, self.threshold])
+            plt.title(location)
+            plt.show()
 
         axis_size_dir = {
             "mh":"x",
@@ -301,22 +308,39 @@ class rough_grid_finding(process):
         temp = [0, 0]
 
         result = []
+        spans = []
 
         while c < size:
             if sum[c] > self.threshold:
                 temp[0] = c
-                for j in range(c+self.line_thickness*3, c, -1):
+                for j in range(c+self.line_thickness, c, -1):
                     if j >= size:
                         continue
                     if sum[j] > self.threshold:
                         temp[1] = j
                         break
-                
+                spans.append(temp[:])
                 result.append((temp[0] + temp[1])/2)
                 c = c + self.line_thickness*3 - 1
             c = c + 1
         
-        return np.array(result)
+        if self.num_lines is None:
+            return np.array(result)
+        
+        span_sums = np.array([np.sum(sum[i[0]:i[1]])/(i[1]-i[0]) for i in spans])
+        span_sums = span_sums/max(span_sums)
+        
+        partial_result = []
+        for i in range(self.num_lines):
+            try:
+                index = np.argmax(span_sums)
+                partial_result.append(result[index])
+                span_sums = np.delete(span_sums, index)
+
+            except ValueError:
+                break
+        
+        return np.array(partial_result)
  
 
 class sequence(process):
@@ -518,7 +542,7 @@ class subdividing(process):
 
 class vector_intersection(process):
 
-    def __init__(self, field_size=50, line_thickness=30, threshold= 10000):
+    def __init__(self, field_size=50, line_thickness=15, threshold= 0.9):
         super().__init__()
         # Before is subgrid with approximate point
         # After is same subgrid with refined point
@@ -537,17 +561,24 @@ class vector_intersection(process):
 
     def find_edge_points(self):
         linefndr = rough_grid_finding(
-            field_size=self.field_size, threshold=self.threshold, line_thickness=self.line_thickness)
+            field_size=self.field_size, threshold=self.threshold, line_thickness=self.line_thickness, num_lines=1)
         linefndr.load(self.before.image)
-        
-        n_x = linefndr.find_lines("n")[0]
+
+        n_x = linefndr.find_lines("n")
         n_y = 0
-        s_x = linefndr.find_lines("s")[0]
+        s_x = linefndr.find_lines("s")
         s_y = self.before.image.image_size.y-1
-        e_y = linefndr.find_lines("e")[0]
+        e_y = linefndr.find_lines("e")
         e_x = self.before.image.image_size.x-1
-        w_y = linefndr.find_lines("w")[0]
+        w_y = linefndr.find_lines("w")
         w_x = 0
+
+        global debug_mode
+
+        if debug_mode:
+            plt.imshow(self.before.image.image_data, cmap="gray")
+            plt.scatter([n_x, e_x, s_x, w_x], [n_y, e_y, s_y, w_y])
+            plt.show()
 
         return np.array([
             [n_x, n_y],

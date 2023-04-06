@@ -2,18 +2,20 @@ import imageprocessor as imgprc
 import cv2 as cv
 import matplotlib.pyplot as plt
 
-img_orig = cv.imread("Example_grids\\2023_03_14_#01_calibration_after0.tif", cv.IMREAD_GRAYSCALE)
+relative_file_path = "Example_grids\\20230405_111436_Cleaned_grid_uncalibrated.tif"
+
+img_orig = cv.imread(relative_file_path, cv.IMREAD_GRAYSCALE)
 img_orig = imgprc.image(img_orig)
 img_scaled = img_orig.scale_image(0.25)
-
+img_copy = img_orig
 
 
 preseq = imgprc.sequence([
     imgprc.bilateral_filtering(),
-    imgprc.binarization(threshold=90)
+    imgprc.binarization(threshold=80)
     ])
 
-preseq.load(img_scaled)
+preseq.load(img_copy)
 preseq.process()
 
 img_bin = preseq.get_result()
@@ -27,14 +29,14 @@ grid = grid.scale_grid(image=img_orig)
 grid.select_intersections()
 
 
-splitter = imgprc.subdividing(field_size=800)
+splitter = imgprc.subdividing(field_size=200)
 splitter.load(grid)
 
 splitter.process()
 
 subgrid = splitter.get_result()
 
-refine = imgprc.vector_intersection()
+refine = imgprc.vector_intersection(threshold=0.5)
 
 for row in range(len(subgrid)):
     for col in range(len(subgrid[row])):
