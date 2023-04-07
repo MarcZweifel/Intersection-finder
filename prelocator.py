@@ -38,6 +38,10 @@ subgrid = splitter.get_result()
 
 refine = imgprc.vector_intersection(threshold=0.5)
 
+# Here:
+# Origin & Grid coordinates are wrong
+# Subgrid image data is empty due to wrong span in the original image -> bug in subdividing.find_split function
+
 for row in range(len(subgrid)):
     for col in range(len(subgrid[row])):
         if subgrid[row, col] is None:

@@ -110,7 +110,6 @@ class grid(image_like):
         plt.plot(xv, yv, marker=".", color="r", linestyle="none")
         plt.show()
 
-
     def scale_grid(self, factor=1, image=None):
         
         if image is None:
@@ -313,7 +312,7 @@ class rough_grid_finding(process):
         while c < size:
             if sum[c] > self.threshold:
                 temp[0] = c
-                for j in range(c+self.line_thickness, c, -1):
+                for j in range(c+self.line_thickness, c-1, -1):
                     if j >= size:
                         continue
                     if sum[j] > self.threshold:
@@ -327,22 +326,29 @@ class rough_grid_finding(process):
         if self.num_lines is None:
             return np.array(result)
         
-        span_sums = np.array([np.sum(sum[i[0]:i[1]])/(i[1]-i[0]) for i in spans])
-        span_sums = span_sums/max(span_sums)
+        span_max = np.zeros((len(spans),1))
+        for i in range(len(spans)):
+            lower = spans[i][0]
+            upper = spans[i][1]
+
+            if lower==upper:
+                span_max[i] = sum[lower]
+                continue
+
+            span_max[i] = np.max(sum[lower:upper])
         
         partial_result = []
         for i in range(self.num_lines):
             try:
-                index = np.argmax(span_sums)
+                index = np.argmax(span_max)
                 partial_result.append(result[index])
-                span_sums = np.delete(span_sums, index)
+                span_max = np.delete(span_max, index)
 
             except ValueError:
                 break
         
         return np.array(partial_result)
  
-
 class sequence(process):
     """This subclass is the processor object for a sequential combination of processes."""
 
@@ -458,7 +464,7 @@ class subdividing(process):
             return None
 
         kernel_mask = np.copy(self.before.mask[mask_row-1:mask_row+2, mask_col-1:mask_col+2])
-        point = self.before.intersections[:, row, col].astype(int)
+        point = self.before.intersections[:, row, col]
         
         idx = {
             0:[1,0, 1,-1],
@@ -470,7 +476,7 @@ class subdividing(process):
             image_size = getattr(self.before.image.image_size, {0:"x", 1:"y"}[c])
             grid_size = getattr(self.before.grid_size, {0:"x", 1:"y"}[c])
 
-            field_size = image_size/(grid_size+1)
+            field_size = image_size//(grid_size+1)
 
             if not kernel_mask[idx[c][0],idx[c][1]]:
                 point_min = self.before.intersections[c, row-c, col-1+c]
@@ -486,14 +492,15 @@ class subdividing(process):
                 if kernel_mask[idx[c][0],idx[c][1]]:
                     result[c, 0] = 2*point[c]-result[c, 1]
             
-            if kernel_mask[idx[c][1],idx[c][2]] and kernel_mask[idx[c][2],idx[c][3]]:
+            if kernel_mask[idx[c][0],idx[c][1]] and kernel_mask[idx[c][2],idx[c][3]]:
                 result[c, 0] = point[c]-field_size//2
                 result[c, 1] = point[c]+field_size//2
             
             
             result[c, 0] = self.fit_to_image(result[c, 0], image_size)
             result[c, 1] = self.fit_to_image(result[c, 1], image_size)
-            return result
+            
+        return result.astype(int)
         
     
     def find_field(self, gridpoint, field_size):
