@@ -1,5 +1,6 @@
 import cv2 as cv
 import matplotlib.pyplot as plt
+import matplotlib.widgets as widgets
 import numpy as np
 
 debug_mode = False
@@ -59,26 +60,16 @@ class grid(image_like):
         fig, ax = plt.subplots()
         if self.image is not None:
             ax.imshow(self.image.image_data, cmap="gray")
-        ax.plot(self.intersections[0], self.intersections[1], marker=".", color="r", linestyle="none")
-        
-        result = []
+        #point_plot = ax.plot(self.intersections[0], self.intersections[1], marker=".", color="r", linestyle="none")
+        point_plot = ax.scatter(self.intersections[0], self.intersections[1], c="red", marker=".")
 
-        def on_press(epress):
-            result.append([epress.xdata, epress.ydata])
-            
+        def on_select(epress, erelease):
+            selected = []
+            x1, y1 = epress.xdata, epress.ydata
+            x2, y2 = erelease.xdata, erelease.ydata
 
-        def on_release(erelease):
-            result.append([erelease.xdata, erelease.ydata])
-            x1, y1 = result[0]
-            x2, y2 = result[1]
-            
-            print(x1, y1)
-            print(x2, y2)
             xmin, xmax = min(x1, x2), max(x1, x2)
             ymin, ymax = min(y1, y2), max(y1, y2)
-
-            # Select the points within the box
-            selected = []
 
             for row in range(self.intersections.shape[1]):
                 for col in range(self.intersections.shape[2]):
@@ -88,14 +79,24 @@ class grid(image_like):
                     if xmin<=x<=xmax and ymin<=y<=ymax:
                         selected.append([row, col])
             
+            print(selected)
+            # Change point color here
+            ax = plt.gca()
+            for i in selected:
+                ax.scatter(self.intersections[0, i[0], i[1]], self.intersections[1, i[0], i[1]], c="blue")
+            epress.canvas.draw()
             selected = np.array(selected)
+            self.activate(selected)
 
-            self.activate(selected)         
+        props = {
+            "facecolor" : None,
+            "edgecolor" : "red",
+            "fill" : False
+        }
+        selector = widgets.RectangleSelector(ax, on_select, button=1, props=props)
 
-        # Connect the onselect function to the figure
-        fig.canvas.mpl_connect('button_press_event', on_press)
-        fig.canvas.mpl_connect('button_release_event', on_release)
         plt.show()
+        
 
     def show_intersections(self):
         if self.image is not None:
@@ -571,13 +572,13 @@ class vector_intersection(process):
             field_size=self.field_size, threshold=self.threshold, line_thickness=self.line_thickness, num_lines=1)
         linefndr.load(self.before.image)
 
-        n_x = linefndr.find_lines("n")
+        n_x = linefndr.find_lines("n")[0]
         n_y = 0
-        s_x = linefndr.find_lines("s")
+        s_x = linefndr.find_lines("s")[0]
         s_y = self.before.image.image_size.y-1
-        e_y = linefndr.find_lines("e")
+        e_y = linefndr.find_lines("e")[0]
         e_x = self.before.image.image_size.x-1
-        w_y = linefndr.find_lines("w")
+        w_y = linefndr.find_lines("w")[0]
         w_x = 0
 
         global debug_mode
