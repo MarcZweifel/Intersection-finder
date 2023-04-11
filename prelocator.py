@@ -1,6 +1,17 @@
 import imageprocessor as imgprc
 import cv2 as cv
 import matplotlib.pyplot as plt
+from tkinter import filedialog as fd
+import sys
+
+file_path = fd.askopenfilename(
+    title='Open image file',
+    initialdir='/',
+    filetypes=[("TIF-file", ".tif .tiff")]
+)
+
+if not file_path:
+    sys.exit()
 
 relative_file_path = "Example_grids\\20230405_111436_Cleaned_grid_uncalibrated.tif"
 
