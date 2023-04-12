@@ -28,8 +28,13 @@ class image(image_like):
         scale = factor*self.scale
         return image(image_data, scale)
         
-    def show_image(self):
-        plt.imshow(self.image_data, "gray")
+    def show_image(self, mode="gray"):
+        if mode == "gray":
+            plt.imshow(self.image_data, cmap="gray")
+        elif mode == "color":
+            plt.imshow(self.image_data[:,:,::-1])
+        else:
+            raise ValueError("mode must be 'gray' or 'color'.")
         plt.show()
             
 class grid(image_like):
@@ -56,51 +61,60 @@ class grid(image_like):
 
         self.origin = origin # [0,0] = top result[c, 0], positive directions are result[c, ] & down
 
-    def select_intersections(self):
+    def select_intersections(self, mode="gray"):
         fig, ax = plt.subplots()
+        
         if self.image is not None:
-            ax.imshow(self.image.image_data, cmap="gray")
-        #point_plot = ax.plot(self.intersections[0], self.intersections[1], marker=".", color="r", linestyle="none")
+            if mode == "gray":
+                ax.imshow(self.image.image_data, cmap="gray")
+            elif mode == "color":
+                ax.imshow(self.image.image_data[:,:,::-1])
+            else:
+                raise ValueError("mode must be 'gray' or 'color'.")
+        
         point_plot = ax.scatter(self.intersections[0], self.intersections[1], c="red", marker=".")
+        selector = point_selector(fig.canvas, self, mode="Select")
 
-        def on_select(epress, erelease):
-            selected = []
-            x1, y1 = epress.xdata, epress.ydata
-            x2, y2 = erelease.xdata, erelease.ydata
+        def checkbox_callback(label):
+            status = checkboxes.get_status()
 
-            xmin, xmax = min(x1, x2), max(x1, x2)
-            ymin, ymax = min(y1, y2), max(y1, y2)
+            if label == "Select":
+                if status == [False, False]:
+                    #Select was deactivated, deselect is inactive
+                    checkboxes.set_active(1)
+                    selector.set_mode(label)
+                elif status == [True, True]:
+                    #Select was activated, deselect is active
+                    checkboxes.set_active(1)
+                    selector.set_mode(label)
+            elif label == "Deselect":
+                if status == [False, False]:
+                    #Deselect was deactivated, select is inactive
+                    checkboxes.set_active(0)
+                    selector.set_mode(label)
+                elif status == [True, True]:
+                    #Deselect was activated, select is active
+                    checkboxes.set_active(0)
+                    selector.set_mode(label)
 
-            for row in range(self.intersections.shape[1]):
-                for col in range(self.intersections.shape[2]):
-                    x = self.intersections[0, row, col]
-                    y = self.intersections[1, row, col]
 
-                    if xmin<=x<=xmax and ymin<=y<=ymax:
-                        selected.append([row, col])
-            
-            print(selected)
-            # Change point color here
-            ax = plt.gca()
-            for i in selected:
-                ax.scatter(self.intersections[0, i[0], i[1]], self.intersections[1, i[0], i[1]], c="blue")
-            epress.canvas.draw()
-            selected = np.array(selected)
-            self.activate(selected)
 
-        props = {
-            "facecolor" : None,
-            "edgecolor" : "red",
-            "fill" : False
-        }
-        selector = widgets.RectangleSelector(ax, on_select, button=1, props=props)
+
+        checkbox_axis = fig.add_axes([0.05, 0.4, 0.1, 0.15])
+        checkboxes = widgets.CheckButtons(checkbox_axis, ["Select", "Deselect"], actives=[True, False])
+        checkboxes.on_clicked(checkbox_callback)
 
         plt.show()
         
 
-    def show_intersections(self):
+    def show_intersections(self, mode="gray"):
         if self.image is not None:
-            plt.imshow(self.image.image_data, cmap="gray")
+            if mode == "gray":
+                plt.imshow(self.image.image_data, cmap="gray")
+            elif mode == "color":
+                plt.imshow(self.image.image_data[:,:,::-1])
+            else:
+                raise ValueError("mode must be 'gray' or 'color'.")
         
         xv = self.intersections[0, :,:]
         xv = xv[np.logical_not(self.mask[1:-1, 1:-1])]
@@ -135,6 +149,131 @@ class grid(image_like):
         copy.origin = self.origin
         return copy
 
+class point_selector():
+
+    def __init__(self, canvas, grid, mode = None):
+        self.canvas = canvas
+        self._press_id = self.canvas.mpl_connect(
+            "button_press_event",
+            self.on_press
+        )
+        self._release_id = self.canvas.mpl_connect(
+            "button_release_event",
+            self.on_release
+        )
+
+        self._select_id = None
+        self.grid = grid
+
+        self.start = None
+        self.start_data = None
+        self.finish_data = None
+        self.axes = None
+
+        self.selected = []
+
+        self.mode = mode
+
+    def on_press(self, event):
+        tool_mode = str(self.canvas.toolbar.mode)
+
+        if tool_mode!="":
+            return
+        
+        if (event.button != 1
+                or event.x is None or event.y is None):
+            return
+        
+        if self.mode is None:
+            return
+
+        self._select_id = self.canvas.mpl_connect(
+            "motion_notify_event",
+            self.on_drag
+        )
+
+        self.axes = [a for a in self.canvas.figure.get_axes()
+                if a.in_axes(event)]
+        if not self.axes:
+            return
+
+        self.start = (event.x, event.y)
+        self.start_data = (event.xdata, event.ydata)
+
+    def on_drag(self, event):
+        start = self.start
+        axes = self.axes[0]
+
+        (x1, y1), (x2, y2) = np.clip(
+            [start, [event.x, event.y]], axes.bbox.min, axes.bbox.max)
+
+        self.draw_rubberband(event, x1, y1, x2, y2)
+
+    def on_release(self, event):
+        tool_mode = str(self.canvas.toolbar.mode)
+
+        if tool_mode!="":
+            return
+        
+        if self._select_id is None or self.start is None:
+            return
+
+        self.canvas.mpl_disconnect(self._select_id)
+        self.remove_rubberband()
+
+        self.finish_data = (event.xdata, event.ydata)
+        self.find_selected()
+
+        self.start = None
+        self.start_data, self.finish_data = None, None
+
+    def draw_rubberband(self, event, x0, y0, x1, y1):
+        self.remove_rubberband()
+        height = self.canvas.figure.bbox.height
+        y0 = height - y0
+        y1 = height - y1
+        self.lastrect = self.canvas._tkcanvas.create_rectangle(x0, y0, x1, y1)
+
+    def remove_rubberband(self):
+        if hasattr(self, "lastrect"):
+            self.canvas._tkcanvas.delete(self.lastrect)
+            del self.lastrect
+    
+    def find_selected(self):
+        if self.start_data is None or self.finish_data is None:
+            return
+        
+        x1, y1 = self.start_data
+        x2, y2 = self.finish_data
+        xmin, xmax = min(x1, x2), max(x1, x2)
+        ymin, ymax = min(y1, y2), max(y1, y2)
+
+        for row in range(self.grid.intersections.shape[1]):
+            for col in range(self.grid.intersections.shape[2]):
+                x = self.grid.intersections[0, row, col]
+                y = self.grid.intersections[1, row, col]
+                if xmin<=x<=xmax and ymin<=y<=ymax:
+                    self.selected.append([row, col])
+        
+
+        if self.mode == "Select":
+            for point in self.selected:
+                self.grid.mask[point[0]+1, point[1]+1] = False
+        elif self.mode == "Deselect":
+            for point in self.selected:
+                self.grid.mask[point[0]+1, point[1]+1] = True
+        else:
+            print(self.selected)
+
+        self.selected = []
+
+    def set_mode(self, new_mode):
+        if new_mode=="Select" or new_mode=="Deselect" or new_mode is None:
+            self.mode = new_mode
+        else:
+            raise ValueError("Mode must be 'Select', 'Deselect' or None")
+
+
 class process():
     """This base class is a general processor object for image processing."""
 
@@ -164,20 +303,43 @@ class process():
         return self.after
 
 class binarization(process):
-    """This subclass is the processor object for calculating a binary image with values 0 = black or 255 = white."""
+    """This subclass is the processor object for calculating a binary image with values 0 = black or 255 = white.
+        If the image is grayscale, threshold is a single int. If it's a color image threshold is a list of 3 ints.
+        The mapping is [b g r]"""
 
-    def __init__(self, threshold=127):
+    def __init__(self, threshold=127, mode="gray", inverted=False):
         super().__init__()
 
         # Standard values
         self.threshold = threshold
-        self.allowed_keys = ("threshold")
+        self.allowed_keys = ("threshold", "mode")
+        self.mode = mode
+        self.inverted = inverted
+
+        self.inversion_map = {
+            True : cv.THRESH_BINARY_INV,
+            False : cv.THRESH_BINARY
+        }
     
     def process(self):
         """Processes binarized image if it's loaded into the processor."""
         try:
-            image_data = cv.threshold(self.before.image_data, self.threshold, 255, cv.THRESH_BINARY)[1]
-            self.after = image(image_data, scale=self.before.scale)
+            if self.mode == "gray":
+                image_data = cv.threshold(self.before.image_data, self.threshold, 255, self.inversion_map[self.inverted])[1]
+                self.after = image(image_data, scale=self.before.scale)
+            elif self.mode == "color":
+                if len(self.inverted)!=3:
+                    self.inverted = [self.inverted for i in range(3)]
+                if len(self.threshold)!=3:
+                    self.threshold = [self.threshold for i in range(3)]
+                image_data_b = cv.threshold(self.before.image_data[:,:,0], self.threshold[0], 255, self.inversion_map[self.inverted[0]])[1]
+                image_data_g = cv.threshold(self.before.image_data[:,:,1], self.threshold[1], 255, self.inversion_map[self.inverted[1]])[1]
+                image_data_r = cv.threshold(self.before.image_data[:,:,2], self.threshold[2], 255, self.inversion_map[self.inverted[2]])[1]
+                image_data = np.maximum(np.maximum(image_data_b, image_data_g), image_data_r)
+                self.after = image(image_data, scale=self.before.scale)
+            else:
+                raise ValueError("Binarizer mode needs to be 'gray' or 'color'.")
+
         
         except:
             print("No image is loaded into binarization processor")
@@ -321,7 +483,7 @@ class rough_grid_finding(process):
                         break
                 spans.append(temp[:])
                 result.append((temp[0] + temp[1])/2)
-                c = c + self.line_thickness*3 - 1
+                c = c + self.line_thickness - 1
             c = c + 1
         
         if self.num_lines is None:
