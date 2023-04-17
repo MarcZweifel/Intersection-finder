@@ -2,6 +2,8 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 import matplotlib.widgets as widgets
 import numpy as np
+from tkinter import filedialog
+import csv
 
 debug_mode = False
 
@@ -28,19 +30,22 @@ class image(image_like):
         scale = factor*self.scale
         return image(image_data, scale)
         
-    def show_image(self, mode="gray"):
+    def show_image(self, mode="gray", title = None):
         if mode == "gray":
             plt.imshow(self.image_data, cmap="gray")
         elif mode == "color":
-            plt.imshow(self.image_data[:,:,::-1])
+            plt.imshow(self.image_data)
         else:
             raise ValueError("mode must be 'gray' or 'color'.")
+        
+        if title is not None:
+            plt.title(title)
         plt.show()
             
 class grid(image_like):
     """This subclass saves the grid line coordinated and calculates its intersection points together with the corresponding image class object."""
 
-    def __init__(self, grid_lines, image=None, origin=[0,0]):
+    def __init__(self, grid_lines, image=None, origin=[0,0], mask=None):
         super().__init__(grid_lines)
 
         self.grid_data = [[j-origin[i] for j in self.image_data[i]] for i in [0,1]]
@@ -52,28 +57,30 @@ class grid(image_like):
 
         self.grid_size = image_size(col_size, row_size)
 
-        self.mask = np.full((row_size+2, col_size+2), True)
-        self.mask[:,(0, -1)] = True
-        self.mask[(0, -1), :] = True
+        if mask is None:
+            self.mask = np.full((row_size+2, col_size+2), True)
+            self.mask[:,(0, -1)] = True
+            self.mask[(0, -1), :] = True
+        else:
+            self.mask = mask
 
         self.image = image
         self.scale = self.image.scale
 
         self.origin = origin # [0,0] = top result[c, 0], positive directions are result[c, ] & down
 
-    def select_intersections(self, mode="gray"):
+    def select_intersections(self, color_mode="gray", title=None, standard_selection_mode="Select", use_mask = False):
         fig, ax = plt.subplots()
-        
+        selector = point_selector(fig.canvas, self, ax, mode=standard_selection_mode)
+        if title is not None:
+            ax.set_title(title)
         if self.image is not None:
-            if mode == "gray":
+            if color_mode == "gray":
                 ax.imshow(self.image.image_data, cmap="gray")
-            elif mode == "color":
-                ax.imshow(self.image.image_data[:,:,::-1])
+            elif color_mode == "color":
+                ax.imshow(self.image.image_data)
             else:
                 raise ValueError("mode must be 'gray' or 'color'.")
-        
-        point_plot = ax.scatter(self.intersections[0], self.intersections[1], c="red", marker=".")
-        selector = point_selector(fig.canvas, self, mode="Select")
 
         def checkbox_callback(label):
             status = checkboxes.get_status()
@@ -96,26 +103,27 @@ class grid(image_like):
                     #Deselect was activated, select is active
                     checkboxes.set_active(0)
                     selector.set_mode(label)
-
-
-
+        
+        actives = [standard_selection_mode=="Select", standard_selection_mode=="Deselect"]
 
         checkbox_axis = fig.add_axes([0.05, 0.4, 0.1, 0.15])
-        checkboxes = widgets.CheckButtons(checkbox_axis, ["Select", "Deselect"], actives=[True, False])
+        checkboxes = widgets.CheckButtons(checkbox_axis, ["Select", "Deselect"], actives=actives)
         checkboxes.on_clicked(checkbox_callback)
-
-        plt.show()
         
-
-    def show_intersections(self, mode="gray"):
+        plt.show()        
+        
+    def show_intersections(self, mode="gray", title=None):
         if self.image is not None:
             if mode == "gray":
                 plt.imshow(self.image.image_data, cmap="gray")
             elif mode == "color":
-                plt.imshow(self.image.image_data[:,:,::-1])
+                plt.imshow(self.image.image_data)
             else:
                 raise ValueError("mode must be 'gray' or 'color'.")
         
+        if title is not None:
+            plt.title(title)
+
         xv = self.intersections[0, :,:]
         xv = xv[np.logical_not(self.mask[1:-1, 1:-1])]
 
@@ -136,7 +144,7 @@ class grid(image_like):
         grid_data = [[j*factor for j in c] for c in self.grid_data]
         origin_scaled = [c*factor for c in self.origin]
 
-        return grid(grid_data, image, origin=origin_scaled)
+        return grid(grid_data, image, origin=origin_scaled, mask=self.mask)
     
     def activate(self, coords):
         
@@ -149,10 +157,39 @@ class grid(image_like):
         copy.origin = self.origin
         return copy
 
+    def get_active(self):
+        result = self.intersections[:,np.logical_not(self.mask[1:-1, 1:-1])]
+        return np.stack((result[0], result[1]), axis=1)
+    
+    def points_as_list(self):
+        return np.stack((self.intersections[0,:,:].flatten(), self.intersections[1,:,:].flatten()), axis=1)
+
+    def export(self):
+
+        file_path = filedialog.asksaveasfilename(
+            title="Export points",
+            initialdir="~/Desktop",
+            filetypes=[("Comma separated values", ".csv")]    
+        )
+        file_path = file_path + ".csv"
+        with open(file_path, "w", newline="\n") as csv_file:
+            csv_writer = csv.writer(csv_file)
+            csv_writer.writerow([
+                "","Area","Mean","Min", "Max", "X", "Y"
+            ])
+            points = self.get_active()/240.4333333
+            
+            filler = np.zeros_like(points[:,0])
+
+            output = np.stack((filler, filler, filler, filler, filler, points[:,0], points[:,1]), axis=1)
+            csv_writer.writerows(output)
+
 class point_selector():
 
-    def __init__(self, canvas, grid, mode = None):
+    def __init__(self, canvas, grid, plot_axis, mode = None):
         self.canvas = canvas
+        self.figure = self.canvas.figure
+
         self._press_id = self.canvas.mpl_connect(
             "button_press_event",
             self.on_press
@@ -162,17 +199,45 @@ class point_selector():
             self.on_release
         )
 
+        self._draw_id = self.canvas.mpl_connect(
+            "draw_event",
+            self.on_draw
+        )
         self._select_id = None
+        self._leave_id = None
+        self._enter_id = None
         self.grid = grid
 
         self.start = None
         self.start_data = None
         self.finish_data = None
-        self.axes = None
-
+        self.plot_axis = plot_axis
+        self.event_axes = None
         self.selected = []
 
         self.mode = mode
+
+        self.points = grid.points_as_list()
+
+        self.point_colors = None
+        
+        
+        # Define color list
+        self.set_colors()
+
+        # Define point plot artists
+        self.point_plot = self.plot_axis.scatter(self.points[:,0], self.points[:,1], c=self.point_colors, marker=".", animated=True)
+
+        #self.update()
+
+    def on_draw(self, event):
+        self.background = self.canvas.copy_from_bbox(self.figure.bbox)
+        self.draw_points()
+
+
+    def on_axis_leave(self, event):
+        if self.event_axes[0].in_axes(event):
+            self.finish_data = (event.xdata, event.ydata)
 
     def on_press(self, event):
         tool_mode = str(self.canvas.toolbar.mode)
@@ -191,10 +256,13 @@ class point_selector():
             "motion_notify_event",
             self.on_drag
         )
+        self._leave_id = self.canvas.mpl_connect(
+            "axes_leave_event",
+            self.on_axis_leave
+        )
 
-        self.axes = [a for a in self.canvas.figure.get_axes()
-                if a.in_axes(event)]
-        if not self.axes:
+        self.event_axes = [a for a in self.figure.get_axes() if a.in_axes(event)]
+        if not self.event_axes:
             return
 
         self.start = (event.x, event.y)
@@ -202,7 +270,7 @@ class point_selector():
 
     def on_drag(self, event):
         start = self.start
-        axes = self.axes[0]
+        axes = self.event_axes[0]
 
         (x1, y1), (x2, y2) = np.clip(
             [start, [event.x, event.y]], axes.bbox.min, axes.bbox.max)
@@ -219,10 +287,15 @@ class point_selector():
             return
 
         self.canvas.mpl_disconnect(self._select_id)
+        self.canvas.mpl_disconnect(self._leave_id)
         self.remove_rubberband()
 
-        self.finish_data = (event.xdata, event.ydata)
+        if self.event_axes[0].in_axes(event):
+            self.finish_data = (event.xdata, event.ydata)
+
         self.find_selected()
+        self.set_colors()
+        self.update()
 
         self.start = None
         self.start_data, self.finish_data = None, None
@@ -255,7 +328,6 @@ class point_selector():
                 if xmin<=x<=xmax and ymin<=y<=ymax:
                     self.selected.append([row, col])
         
-
         if self.mode == "Select":
             for point in self.selected:
                 self.grid.mask[point[0]+1, point[1]+1] = False
@@ -265,6 +337,8 @@ class point_selector():
         else:
             print(self.selected)
 
+        print(self.selected)
+
         self.selected = []
 
     def set_mode(self, new_mode):
@@ -272,6 +346,19 @@ class point_selector():
             self.mode = new_mode
         else:
             raise ValueError("Mode must be 'Select', 'Deselect' or None")
+    
+    def set_colors(self):
+        self.point_colors = np.array(["red" if masked else "blue" for masked in self.grid.mask[1:-1, 1:-1].flatten()])
+
+    def draw_points(self):
+        self.point_plot.set_color(self.point_colors)
+        self.point_plot.draw(self.canvas.get_renderer())
+
+    def update(self):
+        self.canvas.restore_region(self.background)
+        self.draw_points()
+        self.canvas.blit(self.figure.bbox)
+        self.canvas.flush_events()
 
 
 class process():
@@ -305,7 +392,7 @@ class process():
 class binarization(process):
     """This subclass is the processor object for calculating a binary image with values 0 = black or 255 = white.
         If the image is grayscale, threshold is a single int. If it's a color image threshold is a list of 3 ints.
-        The mapping is [b g r]"""
+        """
 
     def __init__(self, threshold=127, mode="gray", inverted=False):
         super().__init__()
