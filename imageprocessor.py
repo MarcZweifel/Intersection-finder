@@ -18,12 +18,12 @@ class image_size():
         self.y = y_in
 
 class image(image_like):
-    def __init__(self, image_data, scale=1):
+    def __init__(self, image_data, scale=1, resolution=1):
         super().__init__(image_data, scale)
         x_in = self.image_data.shape[1]
         y_in = self.image_data.shape[0]
         self.image_size = image_size(x_in, y_in)
-        self.resolution = 1
+        self.resolution = resolution
     
     def scale_image(self,factor):
         image_data = cv.resize(self.image_data, None, fx=factor, fy=factor)
@@ -165,6 +165,7 @@ class grid(image_like):
         return np.stack((self.intersections[0,:,:].flatten(), self.intersections[1,:,:].flatten()), axis=1)
 
     def export(self):
+        resolution = self.image.resolution
 
         file_path = filedialog.asksaveasfilename(
             title="Export points",
@@ -177,7 +178,7 @@ class grid(image_like):
             csv_writer.writerow([
                 "","Area","Mean","Min", "Max", "X", "Y"
             ])
-            points = self.get_active()/240.4333333
+            points = self.get_active()/resolution
             
             filler = np.zeros_like(points[:,0])
 
@@ -360,7 +361,6 @@ class point_selector():
         self.canvas.blit(self.figure.bbox)
         self.canvas.flush_events()
 
-
 class process():
     """This base class is a general processor object for image processing."""
 
@@ -423,7 +423,7 @@ class binarization(process):
                 image_data_g = cv.threshold(self.before.image_data[:,:,1], self.threshold[1], 255, self.inversion_map[self.inverted[1]])[1]
                 image_data_r = cv.threshold(self.before.image_data[:,:,2], self.threshold[2], 255, self.inversion_map[self.inverted[2]])[1]
                 image_data = np.maximum(np.maximum(image_data_b, image_data_g), image_data_r)
-                self.after = image(image_data, scale=self.before.scale)
+                self.after = image(image_data, scale=self.before.scale, resolution=self.before.resolution)
             else:
                 raise ValueError("Binarizer mode needs to be 'gray' or 'color'.")
 
@@ -448,7 +448,7 @@ class bilateral_filtering(process):
 
         try:
             image_data = cv.bilateralFilter(self.before.image_data, self.d, self.sigma_color, None)
-            self.after = image(image_data, scale=self.before.scale)
+            self.after = image(image_data, scale=self.before.scale, resolution=self.before.resolution)
         
         except:
             print("No image is loaded into bilateral filter")
@@ -456,13 +456,12 @@ class bilateral_filtering(process):
 class rough_grid_finding(process):
     """This subclass roughly finds a grid of lines following the algorithm of Jim Green (https://ntrs.nasa.gov/citations/19940023403). However, the summation fields are located in the middle of the image."""
 
-    def __init__(self, field_size=200, line_thickness=20, threshold = 0.9, num_lines=None):
+    def __init__(self, field_size=1, line_thickness=80, threshold = 0.8, num_lines=None):
         super().__init__()
 
         # Standard values
         self.field_size = field_size
         self.line_thickness = line_thickness
-        self.line_distance = 400
         self.threshold = threshold
         self.num_lines = num_lines
 
@@ -470,13 +469,17 @@ class rough_grid_finding(process):
     
     def process(self):
         """Finds the grid of lines."""
-
-        x_lines = self.find_lines('mh')
-        y_lines = self.find_lines('mv')
+        resolution = self.before.resolution
+        self.pixel_field_size = int(self.field_size*resolution)
+        self.line_thickness = int(resolution*self.line_thickness/1000)
+        x_lines = self.find_lines('mh', pixel_field_size=self.pixel_field_size)
+        y_lines = self.find_lines('mv', pixel_field_size=self.pixel_field_size)
         self.after = grid([x_lines, y_lines], image=self.before)
 
-    def find_lines(self, location):
+    def find_lines(self, location, pixel_field_size):
         """Finds the lines by searching in the specified location. Location can be "mh", "mv", "n", "e", "s", "w". """
+
+        field_size = pixel_field_size
 
         if self.before is None:
             print("Load an image!")
@@ -501,7 +504,7 @@ class rough_grid_finding(process):
         if location=="mh" or location=="mv":
             
             middle = (size-1)//2
-            result = [middle-self.field_size//2, middle+self.field_size//2]
+            result = [middle-field_size//2, middle+field_size//2]
 
             if location == "mh":
                 field = self.before.image_data[result[0]:result[1], :]
@@ -510,7 +513,7 @@ class rough_grid_finding(process):
                 field = self.before.image_data[:, result[0]:result[1]]
         
         elif location=="n" or location=="w":
-            result = [0, self.field_size-1]
+            result = [0, field_size-1]
 
             if location == "n":
                 field = self.before.image_data[result[0]:result[1],:]
@@ -519,7 +522,7 @@ class rough_grid_finding(process):
                 field = self.before.image_data[:, result[0]:result[1]] 
         
         elif location=="e" or location=="s":
-            result = [size-1-self.field_size, size-1]
+            result = [size-1-field_size, size-1]
 
             if location == "s":
                 field = self.before.image_data[result[0]:result[1],:]
@@ -672,11 +675,11 @@ class sequence(process):
 class subdividing(process):
     """This subclass subdivides an image with the given grid points. The border of the local image is given by the middle between two gridpoints, the global image edge or the symmetrical distance from the gridpoint. If the optional field size argument controls the side length of the local image if it is given."""
 
-    def __init__(self, field_size=None):
+    def __init__(self, field_size=1.66):
         super().__init__()
         # before as grid with image
         # after as list of local images
-
+        
         self.field_size = field_size # optional argument
 
         self.allowed_keys = ("field_size")
@@ -685,15 +688,18 @@ class subdividing(process):
         col_size = self.before.grid_size.x
         row_size = self.before.grid_size.y
 
+        resolution = self.before.image.resolution
+        self.pixel_field_size = int(self.field_size*resolution)
+
         self.after = np.full((row_size, col_size), None)
 
         for row in range(self.before.grid_size.y):
             for col in range(self.before.grid_size.x):
                 
-                if self.field_size is None:
+                if self.pixel_field_size is None:
                     span = self.find_split([row, col])
                 else:
-                    span = self.find_field([row, col], self.field_size)
+                    span = self.find_field([row, col], self.pixel_field_size)
                 
                 if span is not None:
                     subimage = self.extract_subimage(span)
@@ -795,20 +801,20 @@ class subdividing(process):
         y_max = int(result[1, 1])
         
         image_data = self.before.image.image_data[y_min:y_max, x_min:x_max]
-        return image(image_data=image_data, scale=self.before.scale)
+        return image(image_data=image_data, scale=self.before.scale, resolution=self.before.image.resolution)
 
 class vector_intersection(process):
 
-    def __init__(self, field_size=50, line_thickness=15, threshold= 0.9):
+    def __init__(self, field_size=0.4, line_thickness=80, threshold= 0.6):
         super().__init__()
-        # Before is subgrid with approximate point
-        # After is same subgrid with refined point
         self.field_size = field_size
         self.line_thickness = line_thickness
         self.threshold = threshold
-        pass
 
     def process(self):
+        resolution = self.before.image.resolution
+        self.pixel_field_size = int(self.field_size*resolution)
+        self.pixel_line_thickness = int(self.line_thickness*resolution/1000)
         edge_points = self.find_edge_points()
         result = self.find_intersection(edge_points)
         self.after = grid(
@@ -818,16 +824,16 @@ class vector_intersection(process):
 
     def find_edge_points(self):
         linefndr = rough_grid_finding(
-            field_size=self.field_size, threshold=self.threshold, line_thickness=self.line_thickness, num_lines=1)
+            field_size=self.pixel_field_size, threshold=self.threshold, line_thickness=self.pixel_line_thickness, num_lines=1)
         linefndr.load(self.before.image)
 
-        n_x = linefndr.find_lines("n")[0]
+        n_x = linefndr.find_lines("n", pixel_field_size=self.pixel_field_size)[0]
         n_y = 0
-        s_x = linefndr.find_lines("s")[0]
+        s_x = linefndr.find_lines("s", pixel_field_size=self.pixel_field_size)[0]
         s_y = self.before.image.image_size.y-1
-        e_y = linefndr.find_lines("e")[0]
+        e_y = linefndr.find_lines("e", pixel_field_size=self.pixel_field_size)[0]
         e_x = self.before.image.image_size.x-1
-        w_y = linefndr.find_lines("w")[0]
+        w_y = linefndr.find_lines("w", pixel_field_size=self.pixel_field_size)[0]
         w_x = 0
 
         global debug_mode
@@ -861,13 +867,12 @@ class recombining(process):
     def __init__(self, orig_grid=None):
         super().__init__()
 
-        self.after = orig_grid
-
+        self.orig_grid = orig_grid
         self.allowed_keys = ("orig_grid")
 
     
     def process(self):
-            gridpoints = np.full_like(self.after.intersections, None)
+            self.after = self.orig_grid
 
             for row in range(len(self.before)):
                 for col in range(len(self.before[row])):
