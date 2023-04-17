@@ -69,8 +69,9 @@ class grid(image_like):
 
         self.origin = origin # [0,0] = top result[c, 0], positive directions are result[c, ] & down
 
-    def select_intersections(self, color_mode="gray", title=None, standard_selection_mode="Select", use_mask = False):
+    def select_intersections(self, color_mode="gray", title=None, standard_selection_mode="Select"):
         fig, ax = plt.subplots()
+        fig.set_size_inches(9, 6)
         selector = point_selector(fig.canvas, self, ax, mode=standard_selection_mode)
         if title is not None:
             ax.set_title(title)
@@ -113,6 +114,7 @@ class grid(image_like):
         plt.show()        
         
     def show_intersections(self, mode="gray", title=None):
+
         if self.image is not None:
             if mode == "gray":
                 plt.imshow(self.image.image_data, cmap="gray")
@@ -130,7 +132,7 @@ class grid(image_like):
         yv = self.intersections[1, :,:]
         yv = yv[np.logical_not(self.mask[1:-1, 1:-1])]
 
-        plt.plot(xv, yv, marker=".", color="r", linestyle="none")
+        plt.plot(xv, yv, marker=".", color="b", linestyle="none")
         plt.show()
 
     def scale_grid(self, factor=1, image=None):
@@ -172,6 +174,10 @@ class grid(image_like):
             initialdir="~/Desktop",
             filetypes=[("Comma separated values", ".csv")]    
         )
+
+        if not file_path:
+            return
+
         file_path = file_path + ".csv"
         with open(file_path, "w", newline="\n") as csv_file:
             csv_writer = csv.writer(csv_file)
@@ -228,8 +234,11 @@ class point_selector():
 
         # Define point plot artists
         self.point_plot = self.plot_axis.scatter(self.points[:,0], self.points[:,1], c=self.point_colors, marker=".", animated=True)
+        
+        placeholder_point_r = self.plot_axis.scatter([0],[0], c="r", animated=True)
+        placeholder_point_b = self.plot_axis.scatter([0],[0], c="b", animated=True)
 
-        #self.update()
+        self.figure.legend([placeholder_point_r, placeholder_point_b], ["Unselected", "Selected"], loc="right")
 
     def on_draw(self, event):
         self.background = self.canvas.copy_from_bbox(self.figure.bbox)
@@ -271,7 +280,10 @@ class point_selector():
 
     def on_drag(self, event):
         start = self.start
-        axes = self.event_axes[0]
+        if self.event_axes:
+            axes = self.event_axes[0]
+        else:
+            return
 
         (x1, y1), (x2, y2) = np.clip(
             [start, [event.x, event.y]], axes.bbox.min, axes.bbox.max)
