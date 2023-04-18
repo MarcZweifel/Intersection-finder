@@ -1,8 +1,8 @@
-import imageprocessor as imgprc
 import cv2 as cv
 import matplotlib.pyplot as plt
 from tkinter import filedialog as fd
 import sys
+import imageprocessor as imgprc
 
 # ******************************************************************
 # Program variables:
@@ -49,60 +49,72 @@ fine_summation_field_width = 0.4 # mm   Width over which the pixels are summed u
 # ******************************************************************
 
 
-
+# File dialoge for choosing the image
 file_path = fd.askopenfilename(
     title="Open image file",
     initialdir="~/Desktop",
     filetypes=[("TIF-file", ".tif .tiff")]
 )
 
+# Terminate program if no file chosen
 if not file_path:
     sys.exit()
 
+# Import image in the chosen color mode
 if mode == "gray":
     img_orig = cv.imread(file_path, cv.IMREAD_GRAYSCALE)
 elif mode == "color":
-    img_orig = cv.cvtColor(cv.imread(file_path), cv.COLOR_BGR2RGB)
+    # color image is converted from bgr to rgb
+    img_orig = cv.cvtColor(cv.imread(file_path), cv.COLOR_BGR2RGB) 
 else:
-    raise ValueError("Choose 'gray' or 'color'.")
+    # Error if mode string is wrong
+    raise ValueError("Choose 'gray' or 'color'.") 
 
+# Save in custom image class
 img_orig = imgprc.image(img_orig, resolution=resolution)
 
+# Copy image for binarization
 img_bin = img_orig
+
+# Preprocessing sequence (At the moment only binarization)
 preseq = imgprc.sequence([
     imgprc.binarization(
         threshold=[r_threshold, g_threshold, b_threshold],
         inverted=[r_is_inverted, g_is_inverted, b_is_inverted],
         mode=mode)
     ])
-
 preseq.load(img_bin)
 preseq.process()
-
 img_bin = preseq.get_result()
 
+# Check preprocessing result
 print("Set the binarization parameters to achieve lines with sharp edges and little noise between lines in the binary image.")
 img_bin.show_image(title="Are the binarization parameters satisfactory? Close window to accept")
 
+# Roughly find approximate intersection points
 gridfndr = imgprc.rough_grid_finding(
     field_size=rough_summation_field_width,
     line_thickness=line_thickness,
     threshold=rough_peak_threshold)
 gridfndr.load(img_bin)
 gridfndr.process()
-
 grid = gridfndr.get_result()
 
+# User selects intersection points for refinement
 grid.select_intersections(title="Select the points you want to refine. Close window to accept.")
 grid = grid.scale_grid(image=img_orig)
 
+# Splitting the image into local images containing the intersections
 splitter = imgprc.subdividing(field_size=local_image_size)
 splitter.load(grid)
 splitter.process()
-
 subgrid = splitter.get_result()
 
-refine = imgprc.vector_intersection(threshold=fine_peak_threshold, field_size=fine_summation_field_width, line_thickness=line_thickness)
+# Refine the intersection points by looping over all local images
+refine = imgprc.vector_intersection(
+    threshold=fine_peak_threshold,
+    field_size=fine_summation_field_width,
+    line_thickness=line_thickness)
 
 for row in range(len(subgrid)):
     for col in range(len(subgrid[row])):
@@ -117,11 +129,13 @@ for row in range(len(subgrid)):
         refine.process()
         subgrid[row, col] = refine.get_result()
 
+# Recombine local images to a global grid
 recombine = imgprc.recombining(orig_grid=grid)
 recombine.load(subgrid)
 recombine.process()
 final = recombine.get_result()
 
+# User selects / deselects points for export
 final.select_intersections(title="Check refined points before export. Are they on the intersections? Deselect them if not.", standard_selection_mode="Deselect")
 final.show_intersections(title="Check points again before export. Close window to export.")
 final.export()

@@ -5,19 +5,28 @@ import numpy as np
 from tkinter import filedialog
 import csv
 
-debug_mode = False
+debug_mode = False # Shows summation peaks during line finding
 
 class image_like():
+    """Base class for image and grid class."""
+
     def __init__(self, image_data, scale=1):
         self.image_data = image_data
         self.scale = scale
 
 class image_size():
+    """Class for storing image size in pixels."""
+
     def __init__(self, x_in, y_in):
         self.x = x_in
         self.y = y_in
 
 class image(image_like):
+    """Class for storing images including its size, resolution and relative scale to the original image.
+    image_data: np.array
+    scale: float
+    resolution: float"""
+
     def __init__(self, image_data, scale=1, resolution=1):
         super().__init__(image_data, scale)
         x_in = self.image_data.shape[1]
@@ -26,11 +35,16 @@ class image(image_like):
         self.resolution = resolution
     
     def scale_image(self,factor):
+        """Return a scaled by a factor copy of image instance."""
+
         image_data = cv.resize(self.image_data, None, fx=factor, fy=factor)
         scale = factor*self.scale
-        return image(image_data, scale)
+        resolution = self.resolution*factor
+        return image(image_data, scale, resolution=resolution)
         
     def show_image(self, mode="gray", title = None):
+        """Show the image in the specified color mode with a title."""
+
         if mode == "gray":
             plt.imshow(self.image_data, cmap="gray")
         elif mode == "color":
@@ -43,38 +57,55 @@ class image(image_like):
         plt.show()
             
 class grid(image_like):
-    """This subclass saves the grid line coordinated and calculates its intersection points together with the corresponding image class object."""
+    """Class for storing a grid, its intersection points, origin and corresponding image. Intersection points can be masked to not be considered by intersection finding algorithm.
+    grid_lines: list of pixel coordinate lists of horizontal & vertical lines. Intersections are calculated automatically.
+    intersections: (2 x n x m)-np.array with n intersections in y and m intersections in x-direction.
+    mask: (n+2 x m+2)-np.array filled with bools: True = ignore point; False = Consider point"""
 
     def __init__(self, grid_lines, image=None, origin=[0,0], mask=None):
         super().__init__(grid_lines)
 
+        # Calculate grid data relative to origin
         self.grid_data = [[j-origin[i] for j in self.image_data[i]] for i in [0,1]]
         del self.image_data
+
+        # Calculate meshgrid of intersections
         self.intersections = np.array(np.meshgrid(self.grid_data[0], self.grid_data[1])) #
 
+        # Save number of gridlines as image_size
         row_size = self.intersections.shape[1]
         col_size = self.intersections.shape[2]
-
         self.grid_size = image_size(col_size, row_size)
 
+        # Create mask
         if mask is None:
+            # All points masked if not specified in constructor arguments
             self.mask = np.full((row_size+2, col_size+2), True)
             self.mask[:,(0, -1)] = True
             self.mask[(0, -1), :] = True
         else:
             self.mask = mask
 
+        # Save corresponding image & origin
         self.image = image
         self.scale = self.image.scale
-
         self.origin = origin # [0,0] = top result[c, 0], positive directions are result[c, ] & down
 
     def select_intersections(self, color_mode="gray", title=None, standard_selection_mode="Select"):
+        """Function for setting the intersection mask from user selection."""
+
+        # Initialize figure & plot axis
         fig, ax = plt.subplots()
         fig.set_size_inches(9, 6)
+
+        # Define selection handler instance
         selector = point_selector(fig.canvas, self, ax, mode=standard_selection_mode)
+        
+        # Set plot title
         if title is not None:
             ax.set_title(title)
+        
+        # Plot image in the specified color mode only if it exists
         if self.image is not None:
             if color_mode == "gray":
                 ax.imshow(self.image.image_data, cmap="gray")
@@ -83,6 +114,7 @@ class grid(image_like):
             else:
                 raise ValueError("mode must be 'gray' or 'color'.")
 
+        # Callback function for handling checkbox behavior
         def checkbox_callback(label):
             status = checkboxes.get_status()
 
@@ -105,8 +137,10 @@ class grid(image_like):
                     checkboxes.set_active(0)
                     selector.set_mode(label)
         
+        # List for checkbox initialization
         actives = [standard_selection_mode=="Select", standard_selection_mode=="Deselect"]
 
+        # Initialize Checkbox
         checkbox_axis = fig.add_axes([0.05, 0.4, 0.1, 0.15])
         checkboxes = widgets.CheckButtons(checkbox_axis, ["Select", "Deselect"], actives=actives)
         checkboxes.on_clicked(checkbox_callback)
@@ -114,7 +148,9 @@ class grid(image_like):
         plt.show()        
         
     def show_intersections(self, mode="gray", title=None):
+        """Show all unmasked intersection with corresponding image in the specified color mode. Set the plot title."""
 
+        # Plot image in the color mode only if it exists
         if self.image is not None:
             if mode == "gray":
                 plt.imshow(self.image.image_data, cmap="gray")
@@ -123,62 +159,82 @@ class grid(image_like):
             else:
                 raise ValueError("mode must be 'gray' or 'color'.")
         
+        # Set title
         if title is not None:
             plt.title(title)
 
+        # Extract unmasked points & plot them
         xv = self.intersections[0, :,:]
         xv = xv[np.logical_not(self.mask[1:-1, 1:-1])]
-
         yv = self.intersections[1, :,:]
         yv = yv[np.logical_not(self.mask[1:-1, 1:-1])]
-
         plt.plot(xv, yv, marker=".", color="b", linestyle="none")
+
         plt.show()
 
     def scale_grid(self, factor=1, image=None):
-        
+        """Returns a scaled copy of the grid instance. The scaling is either determined by a specified factor or by the specified image so the grid fits the same image."""
+
         if image is None:
+            # Scale by specified factor
             image = self.image.scale_image(factor)
             
         else:
+            # Fit onto image (standard behavior)
             factor = image.scale/self.scale
         
+        # Scale grid and origin
         grid_data = [[j*factor for j in c] for c in self.grid_data]
         origin_scaled = [c*factor for c in self.origin]
 
         return grid(grid_data, image, origin=origin_scaled, mask=self.mask)
-    
+
     def activate(self, coords):
-        
+        """Activate intersections at specified row-column-coordinates. (Not fully implemented & used!)
+        coords: (n x 2)-np.array, row-index in first, column-index in second column"""
+
         for row in coords[:,0]:
             for col in coords[:,1]:
                 self.mask[row+1][col+1] = False
     
     def copy(self):
+        """Return a copy of the grid instance."""
+
         copy = grid(self.grid_data, image=self.image)
         copy.origin = self.origin
         return copy
 
     def get_active(self):
+        """Return (n x 2)-np.array of row-column-coordinates of unmasked intersections."""
+
         result = self.intersections[:,np.logical_not(self.mask[1:-1, 1:-1])]
         return np.stack((result[0], result[1]), axis=1)
     
     def points_as_list(self):
+        """Return all intersection row-column-coordinates as an (n x 2)-np.array."""
+
         return np.stack((self.intersections[0,:,:].flatten(), self.intersections[1,:,:].flatten()), axis=1)
 
     def export(self):
+        """Export the unmasked intersections coordinates to a csv-file. The coordinates are in mm relative to the upper left corner of the image."""
+
         resolution = self.image.resolution
 
+        # File dialoge for user selection of the file path
         file_path = filedialog.asksaveasfilename(
             title="Export points",
             initialdir="~/Desktop",
             filetypes=[("Comma separated values", ".csv")]    
         )
 
+        # User hit cancel
         if not file_path:
             return
 
+        # Append .csv to the path to not get a generic file
         file_path = file_path + ".csv"
+
+        # Write data to file in required format
         with open(file_path, "w", newline="\n") as csv_file:
             csv_writer = csv.writer(csv_file)
             csv_writer.writerow([
@@ -192,11 +248,17 @@ class grid(image_like):
             csv_writer.writerows(output)
 
 class point_selector():
+    """Class for handling the intersection selection process.
+    canvas: matplotlib.FigureCanvas of the whole figure
+    grid: custom grid class
+    plot_axis: matplotlib.Axes where the image is plotted to
+    mode: 'Select' or 'Deselect' initial selection mode"""
 
     def __init__(self, canvas, grid, plot_axis, mode = None):
         self.canvas = canvas
         self.figure = self.canvas.figure
 
+        # Define event connection handles
         self._press_id = self.canvas.mpl_connect(
             "button_press_event",
             self.on_press
@@ -205,115 +267,148 @@ class point_selector():
             "button_release_event",
             self.on_release
         )
-
         self._draw_id = self.canvas.mpl_connect(
             "draw_event",
             self.on_draw
         )
         self._select_id = None
         self._leave_id = None
-        self._enter_id = None
+
         self.grid = grid
 
-        self.start = None
-        self.start_data = None
-        self.finish_data = None
-        self.plot_axis = plot_axis
-        self.event_axes = None
-        self.selected = []
+        # Mouse input data
+        self.start = None # Start position in figure coordinates
+        self.start_data = None # Start position in plot coordinates
+        self.finish_data = None # End position in plot coordinates
+
+        # Axis handles
+        self.plot_axis = plot_axis # Axis to be plotted in
+        self.event_axes = None # Axis where mouse event started
+
+        self.selected = [] # list of selected points
 
         self.mode = mode
 
         self.points = grid.points_as_list()
-
         self.point_colors = None
         
         
-        # Define color list
+        # Initialize point colors based on grid mask
         self.set_colors()
 
-        # Define point plot artists
+        # Define point plot artist for handling drawing commands. Use blitting
         self.point_plot = self.plot_axis.scatter(self.points[:,0], self.points[:,1], c=self.point_colors, marker=".", animated=True)
         
+        # Set up legend as help for the user. Don't draw the placeholder points.
         placeholder_point_r = self.plot_axis.scatter([0],[0], c="r", animated=True)
         placeholder_point_b = self.plot_axis.scatter([0],[0], c="b", animated=True)
-
-        self.figure.legend([placeholder_point_r, placeholder_point_b], ["Unselected", "Selected"], loc="right")
+        self.figure.legend(
+            [placeholder_point_r, placeholder_point_b],
+            ["Unselected", "Selected"],
+            loc="right")
 
     def on_draw(self, event):
+        """Drawing event callback function to draw points when entire figure is redrawn."""
+
         self.background = self.canvas.copy_from_bbox(self.figure.bbox)
         self.draw_points()
 
-
     def on_axis_leave(self, event):
+        """Callback function when mouse leaves plotting axis to avoid errors."""
+
+        # Clip finish data to last mouse coordinates that where inside the plotting axis.
         if self.event_axes[0].in_axes(event):
             self.finish_data = (event.xdata, event.ydata)
 
     def on_press(self, event):
-        tool_mode = str(self.canvas.toolbar.mode)
+        """Callback function for mouse press event. Start selection process."""
 
+        # Check if matplotlib navigation tools are deactivated.
+        tool_mode = str(self.canvas.toolbar.mode)
         if tool_mode!="":
             return
         
+        # Terminate if not left mouse button pressed or mouse is outside the figure canvas.
         if (event.button != 1
                 or event.x is None or event.y is None):
             return
         
+        # Selection mode has to be specified
         if self.mode is None:
             return
 
+        # Connect a mouse drag event
         self._select_id = self.canvas.mpl_connect(
             "motion_notify_event",
             self.on_drag
         )
+
+        # Connect a axis leave event
         self._leave_id = self.canvas.mpl_connect(
             "axes_leave_event",
             self.on_axis_leave
         )
 
+        # Extract the axis the press event happened in
         self.event_axes = [a for a in self.figure.get_axes() if a.in_axes(event)]
         if not self.event_axes:
             return
 
+        # Set the selection start positions
         self.start = (event.x, event.y)
         self.start_data = (event.xdata, event.ydata)
 
     def on_drag(self, event):
+        """Callback function for mouse drag events. Is continuously called during mouse drag."""
+
         start = self.start
+
+        # Only continue if drag event happens in axis where the initial button press happened.
         if self.event_axes:
             axes = self.event_axes[0]
         else:
             return
 
+        # Clip the selection box data to the axis borders
         (x1, y1), (x2, y2) = np.clip(
             [start, [event.x, event.y]], axes.bbox.min, axes.bbox.max)
 
+        # Draw the selection box
         self.draw_rubberband(event, x1, y1, x2, y2)
 
     def on_release(self, event):
-        tool_mode = str(self.canvas.toolbar.mode)
+        """Callback function for a mouse release event."""
 
+        # Check if matplotlib navigation tools are inactive
+        tool_mode = str(self.canvas.toolbar.mode)
         if tool_mode!="":
             return
         
+        # Check if a mouse drag callback is registered
         if self._select_id is None or self.start is None:
             return
 
+        # Disconnect registered selection callbacks and remove selection rectangle
         self.canvas.mpl_disconnect(self._select_id)
         self.canvas.mpl_disconnect(self._leave_id)
         self.remove_rubberband()
 
+        # Set finish data only if mouse is inside the plotting axis
         if self.event_axes[0].in_axes(event):
             self.finish_data = (event.xdata, event.ydata)
 
+        # Process selected points
         self.find_selected()
         self.set_colors()
         self.update()
 
+        # Reset
         self.start = None
         self.start_data, self.finish_data = None, None
 
     def draw_rubberband(self, event, x0, y0, x1, y1):
+        """Function for drawing the selection rectangle."""
+
         self.remove_rubberband()
         height = self.canvas.figure.bbox.height
         y0 = height - y0
@@ -321,19 +416,25 @@ class point_selector():
         self.lastrect = self.canvas._tkcanvas.create_rectangle(x0, y0, x1, y1)
 
     def remove_rubberband(self):
+        """Function for removing the selection rectangle."""
+
         if hasattr(self, "lastrect"):
             self.canvas._tkcanvas.delete(self.lastrect)
             del self.lastrect
     
     def find_selected(self):
+        """Function for finding points inside the selection rectangle."""
+
         if self.start_data is None or self.finish_data is None:
             return
         
+        # Sort data
         x1, y1 = self.start_data
         x2, y2 = self.finish_data
         xmin, xmax = min(x1, x2), max(x1, x2)
         ymin, ymax = min(y1, y2), max(y1, y2)
 
+        # Check all intersection points if their coordinates are inside the selection intervals
         for row in range(self.grid.intersections.shape[1]):
             for col in range(self.grid.intersections.shape[2]):
                 x = self.grid.intersections[0, row, col]
@@ -341,6 +442,7 @@ class point_selector():
                 if xmin<=x<=xmax and ymin<=y<=ymax:
                     self.selected.append([row, col])
         
+        # Set the grids point mask according to the selection mode
         if self.mode == "Select":
             for point in self.selected:
                 self.grid.mask[point[0]+1, point[1]+1] = False
@@ -352,26 +454,35 @@ class point_selector():
 
         print(self.selected)
 
+        # Reset
         self.selected = []
 
     def set_mode(self, new_mode):
+        """Function for setting the selection mode and error handling."""
+
         if new_mode=="Select" or new_mode=="Deselect" or new_mode is None:
             self.mode = new_mode
         else:
             raise ValueError("Mode must be 'Select', 'Deselect' or None")
     
     def set_colors(self):
+        """Function for creating the point color array used for plotting."""
+
         self.point_colors = np.array(["red" if masked else "blue" for masked in self.grid.mask[1:-1, 1:-1].flatten()])
 
     def draw_points(self):
+        """Function for drawing the points in the corresponding colors."""
+
         self.point_plot.set_color(self.point_colors)
         self.point_plot.draw(self.canvas.get_renderer())
 
     def update(self):
-        self.canvas.restore_region(self.background)
+        """Function for handling draw events using blitting."""
+
+        self.canvas.restore_region(self.background) # Restore background
         self.draw_points()
         self.canvas.blit(self.figure.bbox)
-        self.canvas.flush_events()
+        self.canvas.flush_events() # Process all pending UI events
 
 class process():
     """This base class is a general processor object for image processing."""
@@ -402,19 +513,17 @@ class process():
         return self.after
 
 class binarization(process):
-    """This subclass is the processor object for calculating a binary image with values 0 = black or 255 = white.
-        If the image is grayscale, threshold is a single int. If it's a color image threshold is a list of 3 ints.
-        """
+    """This class is the processor object for calculating a binary image with values 0 = black or 255 = white. If the image is grayscale, threshold is a single int. If it's a color image threshold is a list of 3 ints. If inverted is True all color values below the threshold are set to white."""
 
     def __init__(self, threshold=127, mode="gray", inverted=False):
         super().__init__()
 
-        # Standard values
         self.threshold = threshold
         self.allowed_keys = ("threshold", "mode")
         self.mode = mode
         self.inverted = inverted
 
+        # Map inversion statements to opencv syntax
         self.inversion_map = {
             True : cv.THRESH_BINARY_INV,
             False : cv.THRESH_BINARY
@@ -422,18 +531,28 @@ class binarization(process):
     
     def process(self):
         """Processes binarized image if it's loaded into the processor."""
+
         try:
             if self.mode == "gray":
-                image_data = cv.threshold(self.before.image_data, self.threshold, 255, self.inversion_map[self.inverted])[1]
-                self.after = image(image_data, scale=self.before.scale)
+                image_data = cv.threshold(
+                    self.before.image_data,
+                    self.threshold, 255,
+                    self.inversion_map[self.inverted])[1]
+                self.after = image(image_data, scale=self.before.scale, resolution=self.before.resolution)
+
             elif self.mode == "color":
+                # Some error prevention
                 if len(self.inverted)!=3:
-                    self.inverted = [self.inverted for i in range(3)]
+                    self.inverted = [self.inverted[0] for i in range(3)]
                 if len(self.threshold)!=3:
-                    self.threshold = [self.threshold for i in range(3)]
+                    self.threshold = [self.threshold[0] for i in range(3)]
+                
+                # Individual processing of rgb channels
                 image_data_b = cv.threshold(self.before.image_data[:,:,0], self.threshold[0], 255, self.inversion_map[self.inverted[0]])[1]
                 image_data_g = cv.threshold(self.before.image_data[:,:,1], self.threshold[1], 255, self.inversion_map[self.inverted[1]])[1]
                 image_data_r = cv.threshold(self.before.image_data[:,:,2], self.threshold[2], 255, self.inversion_map[self.inverted[2]])[1]
+
+                # Take maximum pixel value of all binarized color channels
                 image_data = np.maximum(np.maximum(image_data_b, image_data_g), image_data_r)
                 self.after = image(image_data, scale=self.before.scale, resolution=self.before.resolution)
             else:
@@ -444,11 +563,9 @@ class binarization(process):
             print("No image is loaded into binarization processor")
 
 class bilateral_filtering(process):
-    """This subclass is the processor object for the bilateral image filter."""
+    """This class is the processor object for the bilateral image filter. Currently unused."""
 
     def __init__(self, d=9, sigma_color=50):
-        """Adds the standard filter parameters."""
-
         super().__init__()
         self.d = d                      # Filter radius
         self.sigma_color = sigma_color  # Color "radius"  
@@ -466,7 +583,12 @@ class bilateral_filtering(process):
             print("No image is loaded into bilateral filter")
 
 class rough_grid_finding(process):
-    """This subclass roughly finds a grid of lines following the algorithm of Jim Green (https://ntrs.nasa.gov/citations/19940023403). However, the summation fields are located in the middle of the image."""
+    """This subclass roughly finds a grid of lines following the algorithm of Jim Green (https://ntrs.nasa.gov/citations/19940023403). Line_thickness should be generously thicker than lines.
+    field_size in mm ; Length over which the pixel values are summed up
+    line_thickness in um ; Search width in which one line is contained. Should be generously thicker than the actual line.
+    threshold: Relative threshold for peak detection
+    num_lines: Number of lines the algorithm is supposed to find
+    """
 
     def __init__(self, field_size=1, line_thickness=80, threshold = 0.8, num_lines=None):
         super().__init__()
@@ -481,22 +603,34 @@ class rough_grid_finding(process):
     
     def process(self):
         """Finds the grid of lines."""
+
+        # Convert mm to pixels
         resolution = self.before.resolution
         self.pixel_field_size = int(self.field_size*resolution)
         self.line_thickness = int(resolution*self.line_thickness/1000)
+
+        # Find lines and save them
         x_lines = self.find_lines('mh', pixel_field_size=self.pixel_field_size)
         y_lines = self.find_lines('mv', pixel_field_size=self.pixel_field_size)
         self.after = grid([x_lines, y_lines], image=self.before)
 
     def find_lines(self, location, pixel_field_size):
-        """Finds the lines by searching in the specified location. Location can be "mh", "mv", "n", "e", "s", "w". """
+        """Finds the lines by searching in the specified location. Location can be:
+        "mh": middle horizontal,
+        "mv": middle vertical,
+        "n": north,
+        "e": east,
+        "s": south,
+        "w": west"""
 
         field_size = pixel_field_size
 
+        # Check if image is loaded
         if self.before is None:
             print("Load an image!")
             return
 
+        # Map location keywords to get image size in summation direction
         axis_size_dir = {
             "mh":"y",
             "mv":"x",
@@ -510,11 +644,10 @@ class rough_grid_finding(process):
             self.before.image_size, 
             axis_size_dir, 
             "Specifiy location as 'mh', 'mv', 'n', 'e', 's', 'w'!")
-        
-        axis_num = {"x":1, "y":0}[axis_size_dir]
 
         if location=="mh" or location=="mv":
-            
+            # Extract field in the middle
+
             middle = (size-1)//2
             result = [middle-field_size//2, middle+field_size//2]
 
@@ -525,6 +658,7 @@ class rough_grid_finding(process):
                 field = self.before.image_data[:, result[0]:result[1]]
         
         elif location=="n" or location=="w":
+            # Extract field at 0 pixel indices
             result = [0, field_size-1]
 
             if location == "n":
@@ -534,6 +668,7 @@ class rough_grid_finding(process):
                 field = self.before.image_data[:, result[0]:result[1]] 
         
         elif location=="e" or location=="s":
+            # Extract field at -1 pixel indices
             result = [size-1-field_size, size-1]
 
             if location == "s":
@@ -542,10 +677,12 @@ class rough_grid_finding(process):
             elif location == "e":
                 field = self.before.image_data[:, result[0]:result[1]] 
 
-
+        # Indirectly map location keyword to summation direction
+        axis_num = {"x":1, "y":0}[axis_size_dir]
         sum = np.sum(field, axis=axis_num)
-        sum = sum/max(sum)
+        sum = sum/max(sum) # Normalize sum array
 
+        # Plot sum array if in debug mode
         global debug_mode
 
         if debug_mode:
@@ -554,6 +691,7 @@ class rough_grid_finding(process):
             plt.title(location)
             plt.show()
 
+        # Invert location keyword map for iterating over summation array
         axis_size_dir = {
             "mh":"x",
             "mv":"y",
@@ -568,40 +706,47 @@ class rough_grid_finding(process):
             axis_size_dir, 
             "Specifiy location as 'mh', 'mv', 'n', 'e', 's', 'w'!")
 
-        c = 0
+        c = 0 # counter
         temp = [0, 0]
 
-        result = []
-        spans = []
+        result = [] # List of peak center indices
+        spans = [] # List of peak spans
 
         while c < size:
+            # Approach peak from one side
             if sum[c] > self.threshold:
                 temp[0] = c
                 for j in range(c+self.line_thickness, c-1, -1):
+                    # Approach peak from the opposite side
                     if j >= size:
+                        # Don't leave the image
                         continue
                     if sum[j] > self.threshold:
                         temp[1] = j
                         break
                 spans.append(temp[:])
-                result.append((temp[0] + temp[1])/2)
-                c = c + self.line_thickness - 1
+                result.append((temp[0] + temp[1])/2) # Middle of the peak
+                c = c + self.line_thickness - 1 # Continue searching after the peak span
             c = c + 1
         
         if self.num_lines is None:
+            # Return all the found peaks
             return np.array(result)
         
+        # Find the maximum value in each peak span
         span_max = np.zeros((len(spans),1))
         for i in range(len(spans)):
             lower = spans[i][0]
             upper = spans[i][1]
 
+            # Some error handling if span includes only one value
             if lower==upper:
                 span_max[i] = sum[lower]
                 continue
 
             span_max[i] = np.max(sum[lower:upper])
         
+        # Find the num_lines highest peaks
         partial_result = []
         for i in range(self.num_lines):
             try:
@@ -615,12 +760,12 @@ class rough_grid_finding(process):
         return np.array(partial_result)
  
 class sequence(process):
-    """This subclass is the processor object for a sequential combination of processes."""
+    """This class is the processor object for a sequential combination of processes. It functions the same way a singular process would."""
 
     def __init__(self, sequence=[]):
-        """Creates a list containing the sequential processes."""
 
         super().__init__()
+        # Sequence saved as a list of processes.
         self.sequence = sequence
     
     def process(self):
@@ -628,6 +773,7 @@ class sequence(process):
         if not self.sequence: # If sequence is empty
             return
 
+        # Process sequence starting at index 0
         self._process_partial_sequence(0)
 
     def _process_element(self, idx):
@@ -650,13 +796,14 @@ class sequence(process):
             return
 
         if idx==0:
-            self.sequence[0].load(self.before) # Load sequence input into appended process
+            # Load self.before for first element
+            self.sequence[0].load(self.before)
         
         else:
-            self.sequence[idx].load(self.sequence[idx-1].get_result()) # Load result from previous process into appended process
+            self.sequence[idx].load(self.sequence[idx-1].get_result()) # Load result from previous process
 
     def append(self, process):
-        """Appends a process at the end of the sequence."""
+        """Appends a process at the end of the sequence and loads it with the result of the last entry."""
 
         self.sequence.append(process)
         self._transfer(-1)
@@ -670,8 +817,6 @@ class sequence(process):
         if recalculate:
             _process_partial_sequence(idx)
 
-        
-    
     def insert(self, idx, process, recalculate):
         """Inserts a process at the specified index and recalculates the rest of the sequence if recalculate is True."""
 
@@ -682,10 +827,12 @@ class sequence(process):
             self._process_partial_sequence(idx)
     
     def set_parameters(self, idx, **kwargs):
+        """Set the parameters of the process at the specified index."""
+
         self.sequence[idx].set_parameters(**kwargs)
 
 class subdividing(process):
-    """This subclass subdivides an image with the given grid points. The border of the local image is given by the middle between two gridpoints, the global image edge or the symmetrical distance from the gridpoint. If the optional field size argument controls the side length of the local image if it is given."""
+    """This class subdivides a grid and corresponding image such that each subimage contains one intersection point. The border of the local image is given by the middle between two gridpoints, the global image edge or the symmetrical distance from the gridpoint. If the optional field size argument is given it controls the side length of the local image."""
 
     def __init__(self, field_size=1.66):
         super().__init__()
@@ -697,106 +844,130 @@ class subdividing(process):
         self.allowed_keys = ("field_size")
 
     def process(self):
+        # Initialize self.after array
         col_size = self.before.grid_size.x
         row_size = self.before.grid_size.y
+        self.after = np.full((row_size, col_size), None)
 
+        # Convert from mm to pixels
         resolution = self.before.image.resolution
         self.pixel_field_size = int(self.field_size*resolution)
 
-        self.after = np.full((row_size, col_size), None)
-
+        # Iterate over all intersections
         for row in range(self.before.grid_size.y):
             for col in range(self.before.grid_size.x):
-                
                 if self.pixel_field_size is None:
+                    # If field size argument is not specified, split in middle between points
                     span = self.find_split([row, col])
                 else:
                     span = self.find_field([row, col], self.pixel_field_size)
                 
+                # Span array contains slicing indices for image extraction
+                # Span is None if intersection point is masked
                 if span is not None:
                     subimage = self.extract_subimage(span)
-                    suborigin = span[:,0]
+                    suborigin = span[:,0] # Origin at upper left corner of the subimage
                     gridpoint = [[self.before.intersections[i,row, col]] for i in [0,1]]
                     self.after[row, col] = grid(gridpoint, image=subimage, origin=suborigin)
     
     def find_split(self, gridpoint):
-        result = np.zeros((2, 2)) # [xspan, yspan]
+        """Function to find the span array of the specified intersection if the global image is split between two points respectively."""
+
+        # TODO Reimplement this function to find the next unmasked point and split in the middle instead of only considering the 8 surrounding points.
+
+        result = np.zeros((2, 2)) # [[xspan], [yspan]]
         row = gridpoint[0]
         col = gridpoint[1]
 
+        # Mask index is +1 due to border mask
         mask_row = row+1
         mask_col = col+1
+
+        # Return None if point is masked
         point_mask = self.before.mask[mask_row, mask_col]
-        
         if point_mask:
             return None
 
+        # Extract 3x3 mask around point
         kernel_mask = np.copy(self.before.mask[mask_row-1:mask_row+2, mask_col-1:mask_col+2])
         point = self.before.intersections[:, row, col]
         
+        # Map for accessing the 3x3 mask considering the split direction.
         idx = {
             0:[1,0, 1,-1],
             1:[0,1, -1,1]
         }
 
+        # Loop to find the split in horizontal=0 and vertical=1 direction
         for c in [0,1]:
-            
+            # Standard field size if all surrounding points are masked
             image_size = getattr(self.before.image.image_size, {0:"x", 1:"y"}[c])
             grid_size = getattr(self.before.grid_size, {0:"x", 1:"y"}[c])
-
             field_size = image_size//(grid_size+1)
 
             if not kernel_mask[idx[c][0],idx[c][1]]:
+                # If east or north point is not masked, append midpoint to result
                 point_min = self.before.intersections[c, row-c, col-1+c]
                 result[c, 0] = (point[c] + point_min)//2
     
                 if kernel_mask[idx[c][2],idx[c][3]]:
+                    # If opposite point is masked do symmetric field expansion
                     result[c, 1] = 2*point[c]-result[c, 0]
     
             if not kernel_mask[idx[c][2],idx[c][3]]:
+                # If west or south point is not masked, append midpoint to result
                 point_max = self.before.intersections[c, row+c, col+1-c]
                 result[c, 1] = (point[c] + point_max)//2
     
                 if kernel_mask[idx[c][0],idx[c][1]]:
+                    # If opposite point is masked do symmetric field expansion
                     result[c, 0] = 2*point[c]-result[c, 1]
             
             if kernel_mask[idx[c][0],idx[c][1]] and kernel_mask[idx[c][2],idx[c][3]]:
+                # If all direct neighbors are masked apply standard field size
                 result[c, 0] = point[c]-field_size//2
                 result[c, 1] = point[c]+field_size//2
             
-            
+            # Clip the found spans at the image border
             result[c, 0] = self.fit_to_image(result[c, 0], image_size)
             result[c, 1] = self.fit_to_image(result[c, 1], image_size)
             
         return result.astype(int)
-        
     
     def find_field(self, gridpoint, field_size):
-        result = np.zeros((2,2)) # [x_span, y_span]
+        """Function to find the span array of the specified intersection point if local images are extracted with equal field sizes symmetrically around the point."""
+        
+        result = np.zeros((2,2)) # [[x_span], [y_span]]
 
         row = gridpoint[0]
         col = gridpoint[1]
 
+        # Mask index is +1 due to border mask
         mask_row = row+1
         mask_col = col+1
 
+        # Return None if point is masked
         if self.before.mask[mask_row, mask_col]:
             return None
 
         point = self.before.intersections[:,row, col].astype(int)
 
+        # Loop over slicing directions
         for c in [0, 1]:
             image_size = getattr(self.before.image.image_size, {0:"x", 1:"y"}[c])
             
+            # Calculate upper and lower span limit
             max = point[c]+field_size//2
             min = point[c]-field_size//2
 
+            # Clip the found span at the image border
             result[c, 0] = self.fit_to_image(min, image_size)
             result[c, 1] = self.fit_to_image(max, image_size)
         
         return result
     
     def fit_to_image(self, index, size):
+        """Function to limit the specified index to be inside the specified image size."""
 
         if index < 0:
             index = 0
@@ -806,16 +977,22 @@ class subdividing(process):
         
         return index
 
-    def extract_subimage(self, result):        
-        x_min = int(result[0, 0])
-        x_max = int(result[0, 1])
-        y_min = int(result[1, 0])
-        y_max = int(result[1, 1])
+    def extract_subimage(self, span):
+        """Function to extract the subimage in the specified Coordinate span. Returns the subimage"""
+
+        x_min = int(span[0, 0])
+        x_max = int(span[0, 1])
+        y_min = int(span[1, 0])
+        y_max = int(span[1, 1])
         
         image_data = self.before.image.image_data[y_min:y_max, x_min:x_max]
         return image(image_data=image_data, scale=self.before.scale, resolution=self.before.image.resolution)
 
 class vector_intersection(process):
+    """This class finds where lines cross the edges of an extracted subimage and refines the intersection position using vector geometry.
+    field_size in mm ; width over which pixels are summed up
+    line_thickness in um ; Search width in which one line is contained. Should be generously thicker than the actual line.
+    threshold: Relative threshold for peak detection"""
 
     def __init__(self, field_size=0.4, line_thickness=80, threshold= 0.6):
         super().__init__()
@@ -824,21 +1001,29 @@ class vector_intersection(process):
         self.threshold = threshold
 
     def process(self):
+        # Convert from mm to pixels
         resolution = self.before.image.resolution
         self.pixel_field_size = int(self.field_size*resolution)
         self.pixel_line_thickness = int(self.line_thickness*resolution/1000)
+
+        # Calculating the local intersection coordinates as floats
         edge_points = self.find_edge_points()
         result = self.find_intersection(edge_points)
+
+        # Set result also considering the origin point
         self.after = grid(
             result, image=self.before.image)
-        
         self.after.origin = self.before.origin
 
     def find_edge_points(self):
+        """Function to find where lines cross the edges of the local image. Returns a (4x2)-np.array of edge point coordinates"""
+
+        # Use line finder from rough_grid_finding class. Only find 1 line, otherwise program might give an error.
         linefndr = rough_grid_finding(
             field_size=self.pixel_field_size, threshold=self.threshold, line_thickness=self.pixel_line_thickness, num_lines=1)
         linefndr.load(self.before.image)
 
+        # Find line crossings at four different edges.
         n_x = linefndr.find_lines("n", pixel_field_size=self.pixel_field_size)[0]
         n_y = 0
         s_x = linefndr.find_lines("s", pixel_field_size=self.pixel_field_size)[0]
@@ -848,8 +1033,8 @@ class vector_intersection(process):
         w_y = linefndr.find_lines("w", pixel_field_size=self.pixel_field_size)[0]
         w_x = 0
 
+        # Plot local image and found line crossings for debugging purposes
         global debug_mode
-
         if debug_mode:
             plt.imshow(self.before.image.image_data, cmap="gray")
             plt.scatter([n_x, e_x, s_x, w_x], [n_y, e_y, s_y, w_y])
@@ -863,8 +1048,8 @@ class vector_intersection(process):
         ])
 
     def find_intersection(self, edge_points): 
-        """https://en.wikipedia.org/wiki/Line%E2%80%93line_intersection.
-        function to find a Line–line intersection"""
+        """Function to find a Line–line intersection from given edge points. https://en.wikipedia.org/wiki/Line%E2%80%93line_intersection"""
+
         x1, x2, x3, x4 = edge_points[:,1]
         y1, y2, y3, y4 = edge_points[:,0]
 
@@ -875,14 +1060,15 @@ class vector_intersection(process):
         return [[py], [px]]
 
 class recombining(process):
+    """Class for recombining an array of refined intersection points to a big grid.
+    orig_grid is the unrefined grid."""
 
-    def __init__(self, orig_grid=None):
+    def __init__(self, orig_grid):
         super().__init__()
 
         self.orig_grid = orig_grid
         self.allowed_keys = ("orig_grid")
 
-    
     def process(self):
             self.after = self.orig_grid
 
@@ -891,7 +1077,8 @@ class recombining(process):
                     if self.before[row, col] is None:
                         continue
 
+                    # If a point has been refined replace it in the original grid by the refined point
                     grid = self.before[row, col]
-                    point = np.add(grid.intersections[:, 0, 0], grid.origin)
+                    point = np.add(grid.intersections[:, 0, 0], grid.origin) # Add the origin offset to the local grid coordinates
 
                     self.after.intersections[:,row, col] = point
