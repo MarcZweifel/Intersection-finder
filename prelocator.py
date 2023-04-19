@@ -1,7 +1,9 @@
 import cv2 as cv
 import matplotlib.pyplot as plt
 from tkinter import filedialog as fd
+import numpy as np
 import sys
+import csv
 import imageprocessor as imgprc
 
 # ******************************************************************
@@ -91,14 +93,55 @@ img_bin = preseq.get_result()
 print("Set the binarization parameters to achieve lines with sharp edges and little noise between lines in the binary image.")
 img_bin.show_image(title="Are the binarization parameters satisfactory? Close window to accept")
 
+# Import previous points
+file_path = fd.askopenfilename(
+    title="Open previously saved points",
+    initialdir="~/Desktop",
+    filetypes=[("CSV-file", ".csv")]
+)
+# User chose file:
+if file_path:
+    with open(file_path, "r", newline="\n") as csv_file:
+        csv_reader = csv.reader(csv_file)
+        # Skip header
+        next(csv_reader, None)
+
+        # Read points and its indices in the grid in csv-rows
+        points = np.empty((0,2), float)
+        indices = np.empty((0,2), int)
+        for row in csv_reader:
+            xpoint = float(row[-4])*resolution
+            ypoint = float(row[-3])*resolution
+            
+            points = np.append(points, np.array([[xpoint, ypoint]]), axis=0)
+            indices = np.append(indices, np.array([row[-2:]], dtype=float).astype(int), axis=0)
+        
+        # Use minimal amount of masked points
+        row_min = indices[:,0].min()
+        row_max = indices[:,0].max()
+        col_min = indices[:,1].min()
+        col_max = indices[:,1].max()
+
+        shape = (2 ,row_max-row_min+1, col_max-col_min+1)
+        mask = np.full(shape[1:], True)
+        intersections = np.full(shape, np.NaN)
+
+        for point, [row, column] in zip(points, indices):
+            intersections[:,row-row_min, column-col_min] = point
+            mask[row-row_min, column-col_min] = False
+
+        grid = imgprc.grid(intersections=intersections, image=img_bin, mask=mask)
+
+# User hit cancel
+else:
 # Roughly find approximate intersection points
-gridfndr = imgprc.rough_grid_finding(
-    field_size=rough_summation_field_width,
-    line_thickness=line_thickness,
-    threshold=rough_peak_threshold)
-gridfndr.load(img_bin)
-gridfndr.process()
-grid = gridfndr.get_result()
+    gridfndr = imgprc.rough_grid_finding(
+        field_size=rough_summation_field_width,
+        line_thickness=line_thickness,
+        threshold=rough_peak_threshold)
+    gridfndr.load(img_bin)
+    gridfndr.process()
+    grid = gridfndr.get_result()
 
 # User selects intersection points for refinement
 grid.select_intersections(title="Select the points you want to refine. Close window to accept.")

@@ -117,8 +117,8 @@ with open(file_path, 'r') as csv_file:
 
     for row in csv_reader:
         # Extract the last and second last numbers from the row
-        x_pos = float(row[-2])
-        y_pos = float(row[-1]) * -1
+        x_pos = float(row[-4])
+        y_pos = float(row[-3]) * -1
 
         # Add the numbers to the position array
         positions = np.append(positions, np.array([[x_pos, y_pos]]), axis=0)

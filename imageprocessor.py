@@ -7,13 +7,6 @@ import csv
 
 debug_mode = False # Shows summation peaks during line finding
 
-class image_like():
-    """Base class for image and grid class."""
-
-    def __init__(self, image_data, scale=1):
-        self.image_data = image_data
-        self.scale = scale
-
 class image_size():
     """Class for storing image size in pixels."""
 
@@ -21,14 +14,15 @@ class image_size():
         self.x = x_in
         self.y = y_in
 
-class image(image_like):
+class image():
     """Class for storing images including its size, resolution and relative scale to the original image.
     image_data: np.array
     scale: float
     resolution: float"""
 
     def __init__(self, image_data, scale=1, resolution=1):
-        super().__init__(image_data, scale)
+        self.image_data = image_data
+        self.scale = scale
         x_in = self.image_data.shape[1]
         y_in = self.image_data.shape[0]
         self.image_size = image_size(x_in, y_in)
@@ -56,21 +50,30 @@ class image(image_like):
             plt.title(title)
         plt.show()
             
-class grid(image_like):
+class grid():
     """Class for storing a grid, its intersection points, origin and corresponding image. Intersection points can be masked to not be considered by intersection finding algorithm.
     grid_lines: list of pixel coordinate lists of horizontal & vertical lines. Intersections are calculated automatically.
-    intersections: (2 x n x m)-np.array with n intersections in y and m intersections in x-direction.
+    intersections: (2 x n x m)-np.array (meshgrid format) with n intersections in y and m intersections in x-direction.
+    image: corresponding image
+    origin: origin of the grid (upper left corner of image)
     mask: (n+2 x m+2)-np.array filled with bools: True = ignore point; False = Consider point"""
 
-    def __init__(self, grid_lines, image=None, origin=[0,0], mask=None):
-        super().__init__(grid_lines)
+    def __init__(self, grid_lines=None, intersections=None, image=None, origin=[0,0], mask=None):
+        
+        if intersections is not None:
+            self.intersections = intersections
+            self.intersections[0,:,:] -= origin[0]
+            self.intersections[1,:,:] -= origin[1]
 
-        # Calculate grid data relative to origin
-        self.grid_data = [[j-origin[i] for j in self.image_data[i]] for i in [0,1]]
-        del self.image_data
+        elif grid_lines is not None:
+            # Calculate grid data relative to origin
+            grid_data = [[j-origin[i] for j in grid_lines[i]] for i in [0,1]]
 
-        # Calculate meshgrid of intersections
-        self.intersections = np.array(np.meshgrid(self.grid_data[0], self.grid_data[1])) #
+            # Calculate meshgrid of intersections
+            self.intersections = np.array(np.meshgrid(grid_data[0], grid_data[1]))
+        
+        else:
+            self.intersections = np.full((2,1,1), None)    
 
         # Save number of gridlines as image_size
         row_size = self.intersections.shape[1]
@@ -78,13 +81,9 @@ class grid(image_like):
         self.grid_size = image_size(col_size, row_size)
 
         # Create mask
-        if mask is None:
-            # All points masked if not specified in constructor arguments
-            self.mask = np.full((row_size+2, col_size+2), True)
-            self.mask[:,(0, -1)] = True
-            self.mask[(0, -1), :] = True
-        else:
-            self.mask = mask
+        self.mask = np.full((row_size+2, col_size+2), True)
+        if mask is not None:
+            self.mask[1:-1, 1:-1] = mask[:,:]
 
         # Save corresponding image & origin
         self.image = image
@@ -184,10 +183,10 @@ class grid(image_like):
             factor = image.scale/self.scale
         
         # Scale grid and origin
-        grid_data = [[j*factor for j in c] for c in self.grid_data]
+        intersections = self.intersections[:,:,:]*factor
         origin_scaled = [c*factor for c in self.origin]
 
-        return grid(grid_data, image, origin=origin_scaled, mask=self.mask)
+        return grid(intersections=intersections, image=image, origin=origin_scaled, mask=self.mask[1:-1,1:-1])
 
     def activate(self, coords):
         """Activate intersections at specified row-column-coordinates. (Not fully implemented & used!)
@@ -200,15 +199,17 @@ class grid(image_like):
     def copy(self):
         """Return a copy of the grid instance."""
 
-        copy = grid(self.grid_data, image=self.image)
-        copy.origin = self.origin
+        copy = grid(intersections=self.intersections, image=self.image, origin=self.origin)
         return copy
 
     def get_active(self):
         """Return (n x 2)-np.array of row-column-coordinates of unmasked intersections."""
 
-        result = self.intersections[:,np.logical_not(self.mask[1:-1, 1:-1])]
-        return np.stack((result[0], result[1]), axis=1)
+        mask = self.mask[1:-1, 1:-1]
+        result = self.intersections[:,np.logical_not(mask)]
+        rows = np.array([i[0] for i in np.ndindex(mask.shape) if not mask[i]])
+        columns = np.array([i[1] for i in np.ndindex(mask.shape) if not mask[i]])
+        return np.stack((result[0], result[1], rows, columns), axis=1)
     
     def points_as_list(self):
         """Return all intersection row-column-coordinates as an (n x 2)-np.array."""
@@ -240,11 +241,11 @@ class grid(image_like):
             csv_writer.writerow([
                 "","Area","Mean","Min", "Max", "X", "Y"
             ])
-            points = self.get_active()/resolution
+            points = self.get_active()
             
             filler = np.zeros_like(points[:,0])
 
-            output = np.stack((filler, filler, filler, filler, filler, points[:,0], points[:,1]), axis=1)
+            output = np.stack((filler, filler, filler, filler, filler, points[:,0]/resolution, points[:,1]/resolution, points[:,2], points[:,3]), axis=1)
             csv_writer.writerows(output)
 
 class point_selector():
@@ -612,7 +613,7 @@ class rough_grid_finding(process):
         # Find lines and save them
         x_lines = self.find_lines('mh', pixel_field_size=self.pixel_field_size)
         y_lines = self.find_lines('mv', pixel_field_size=self.pixel_field_size)
-        self.after = grid([x_lines, y_lines], image=self.before)
+        self.after = grid(grid_lines=[x_lines, y_lines], image=self.before)
 
     def find_lines(self, location, pixel_field_size):
         """Finds the lines by searching in the specified location. Location can be:
@@ -868,7 +869,7 @@ class subdividing(process):
                     subimage = self.extract_subimage(span)
                     suborigin = span[:,0] # Origin at upper left corner of the subimage
                     gridpoint = [[self.before.intersections[i,row, col]] for i in [0,1]]
-                    self.after[row, col] = grid(gridpoint, image=subimage, origin=suborigin)
+                    self.after[row, col] = grid(grid_lines=gridpoint, image=subimage, origin=suborigin)
     
     def find_split(self, gridpoint):
         """Function to find the span array of the specified intersection if the global image is split between two points respectively."""
@@ -1012,7 +1013,7 @@ class vector_intersection(process):
 
         # Set result also considering the origin point
         self.after = grid(
-            result, image=self.before.image)
+            grid_lines=result, image=self.before.image)
         self.after.origin = self.before.origin
 
     def find_edge_points(self):
