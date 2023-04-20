@@ -1,6 +1,7 @@
 import cv2 as cv
 import matplotlib.pyplot as plt
 import matplotlib.widgets as widgets
+from matplotlib.collections import PathCollection
 import numpy as np
 from tkinter import filedialog
 import csv
@@ -58,7 +59,7 @@ class grid():
     origin: origin of the grid (upper left corner of image)
     mask: (n+2 x m+2)-np.array filled with bools: True = ignore point; False = Consider point"""
 
-    def __init__(self, grid_lines=None, intersections=None, image=None, origin=[0,0], mask=None):
+    def __init__(self, grid_lines=None, intersections=None, image=None, origin=[0,0], mask=None, zero_index=None):
         
         if intersections is not None:
             self.intersections = intersections
@@ -89,6 +90,11 @@ class grid():
         self.image = image
         self.scale = self.image.scale
         self.origin = origin # [0,0] = top result[c, 0], positive directions are result[c, ] & down
+
+        # Grid zero point information
+        self.zero_index = zero_index
+        if zero_index is not None:
+            self.zero = self.intersections[:, zero_index[0], zero_index[1]]
 
     def select_intersections(self, color_mode="gray", title=None, standard_selection_mode="Select"):
         """Function for setting the intersection mask from user selection."""
@@ -213,8 +219,11 @@ class grid():
     
     def points_as_list(self):
         """Return all intersection row-column-coordinates as an (n x 2)-np.array."""
-
-        return np.stack((self.intersections[0,:,:].flatten(), self.intersections[1,:,:].flatten()), axis=1)
+        xv = self.intersections[0,:,:].flatten()
+        yv = self.intersections[1,:,:].flatten()
+        rows = np.array([i[0] for i in np.ndindex(self.intersections.shape[1:])])
+        columns = np.array([i[1] for i in np.ndindex(self.intersections.shape[1:])])
+        return np.stack((xv, yv, rows, columns), axis=1)
 
     def export(self):
         """Export the unmasked intersections coordinates to a csv-file. The coordinates are in mm relative to the upper left corner of the image."""
@@ -239,14 +248,123 @@ class grid():
         with open(file_path, "w", newline="\n") as csv_file:
             csv_writer = csv.writer(csv_file)
             csv_writer.writerow([
-                "","Area","Mean","Min", "Max", "X", "Y"
+                "","Area","Mean","Min", "Max", "X", "Y", "row", "column", "zero point"
             ])
             points = self.get_active()
             
             filler = np.zeros_like(points[:,0])
+            
+            zero_point = np.logical_and(
+                np.equal(points[:,2], self.zero_index[0]),
+                np.equal(points[:,3], self.zero_index[1]))
 
-            output = np.stack((filler, filler, filler, filler, filler, points[:,0]/resolution, points[:,1]/resolution, points[:,2], points[:,3]), axis=1)
+            output = np.stack((filler, filler, filler, filler, filler, points[:,0]/resolution, points[:,1]/resolution, points[:,2], points[:,3], zero_point), axis=1)
             csv_writer.writerows(output)
+
+    def pick_zero(self, color_mode="gray", title=None):
+        """Function to pick the zero point of the grid from existing intersection points."""
+        
+        def on_pick(event):
+            # Get the x and y coordinates of the point clicked
+            x_pos = event.mouseevent.xdata
+            y_pos = event.mouseevent.ydata
+
+            points = self.get_active()[:,(0,1)]
+            indices = self.get_active()[:,(2,3)].astype(int)
+
+            if x_pos is not None and y_pos is not None:
+                #print(f"Selected point: ({x_pos:.2f}, {y_pos:.2f})")
+
+                # Find the index of the closest point in the positions array
+                distances = np.sqrt((points[:, 0] - x_pos) ** 2 + (points[:, 1] - y_pos) ** 2)
+                closest_list_idx = np.argmin(distances)
+                self.zero_index = indices[closest_list_idx,:]
+                self.zero = points[closest_list_idx,:]
+                print(f"Zero point at ({self.zero[0]}, {self.zero[1]}) with index ({self.zero_index[0]}, {self.zero_index[1]})")
+
+        # Cancel if no intersection points exist
+        if self.intersections is None:
+            return
+        
+        fig, ax = plt.subplots()
+        fig.set_size_inches(9, 6)
+        
+        # Set plot title
+        if title is not None:
+            ax.set_title(title)
+        
+        # Plot image in the specified color mode only if it exists
+        if self.image is not None:
+            if color_mode == "gray":
+                ax.imshow(self.image.image_data, cmap="gray")
+            elif color_mode == "color":
+                ax.imshow(self.image.image_data)
+            else:
+                raise ValueError("mode must be 'gray' or 'color'.")
+        
+        points = self.get_active()[:,(0,1)]
+        indices = self.get_active()[:,(2,3)]
+
+        # points = self.get_active()[:,(0,1)]
+        # indices = self.get_active()[:,(2,3)]
+
+        ax.scatter(points[:,0], points[:,1], marker=".", color="b", picker=True)
+        fig.canvas.mpl_connect("pick_event", on_pick)
+
+        plt.show()
+
+    def place_zero(self, title=None, color_mode="gray"):
+        """Function to place the zero point of the grid to the position where the mouse click happened."""
+
+        def on_click(event):
+            canvas = event.canvas
+            tool_mode = str(canvas.toolbar.mode)
+
+            if tool_mode != "":
+                return
+
+            x_pos = event.xdata
+            y_pos = event.ydata
+            ax = event.inaxes
+            fig = canvas.figure
+            
+            self.zero = [x_pos, y_pos]
+            if self.zero_index is not None:
+                # Only if zero_index exists
+                # Calculate zero_point deviation from click position
+                delta = self.zero[:] - self.intersections[:,self.zero_index[0], self.zero_index[1]]
+                # Move all intersection points
+                self.intersections[0,:,:] += delta[0]
+                self.intersections[1,:,:] += delta[1]
+
+                # TODO get plotting to work
+                points = self.get_active()[:,0:2]
+                point_artist = ax.scatter(points[:,0], points[:,1], marker=".", color="b", animated=True)
+                canvas.draw()
+
+                print(f"Zero point at ({self.intersections[0,self.zero_index[0], self.zero_index[1]]}, {self.intersections[1,self.zero_index[0], self.zero_index[1]]})")
+
+
+        fig, ax = plt.subplots()
+        fig.set_size_inches(9, 6)
+
+        # Set plot title
+        if title is not None:
+            ax.set_title(title)
+        
+        # Plot image in the specified color mode only if it exists
+        if self.image is not None:
+            if color_mode == "gray":
+                ax.imshow(self.image.image_data, cmap="gray")
+            elif color_mode == "color":
+                ax.imshow(self.image.image_data)
+            else:
+                raise ValueError("mode must be 'gray' or 'color'.")
+            
+        
+
+        fig.canvas.mpl_connect("button_press_event", on_click)
+        plt.show()
 
 class point_selector():
     """Class for handling the intersection selection process.

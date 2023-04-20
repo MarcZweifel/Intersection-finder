@@ -91,7 +91,7 @@ img_bin = preseq.get_result()
 
 # Check preprocessing result
 print("Set the binarization parameters to achieve lines with sharp edges and little noise between lines in the binary image.")
-img_bin.show_image(title="Are the binarization parameters satisfactory? Close window to accept")
+# img_bin.show_image(title="Are the binarization parameters satisfactory? Close window to accept")
 
 # Import previous points
 file_path = fd.askopenfilename(
@@ -101,6 +101,7 @@ file_path = fd.askopenfilename(
 )
 # User chose file:
 if file_path:
+    rough_grid_finding_flag = False
     with open(file_path, "r", newline="\n") as csv_file:
         csv_reader = csv.reader(csv_file)
         # Skip header
@@ -110,11 +111,13 @@ if file_path:
         points = np.empty((0,2), float)
         indices = np.empty((0,2), int)
         for row in csv_reader:
-            xpoint = float(row[-4])*resolution
-            ypoint = float(row[-3])*resolution
+            xpoint = float(row[5])*resolution
+            ypoint = float(row[6])*resolution
             
             points = np.append(points, np.array([[xpoint, ypoint]]), axis=0)
-            indices = np.append(indices, np.array([row[-2:]], dtype=float).astype(int), axis=0)
+            indices = np.append(indices, np.array([row[7:9]], dtype=float).astype(int), axis=0)
+            if bool(int(float(row[9]))):
+                zero_index = np.array(row[7:9], dtype=float).astype(int)
         
         # Use minimal amount of masked points
         row_min = indices[:,0].min()
@@ -129,12 +132,16 @@ if file_path:
         for point, [row, column] in zip(points, indices):
             intersections[:,row-row_min, column-col_min] = point
             mask[row-row_min, column-col_min] = False
-
-        grid = imgprc.grid(intersections=intersections, image=img_bin, mask=mask)
+        zero_index[0] -= row_min
+        zero_index[1] -= col_min
+        grid = imgprc.grid(intersections=intersections, image=img_bin, mask=mask, zero_index=zero_index)
+        grid.place_zero(title="Place the zero point of the grid on the image.")
 
 # User hit cancel
 else:
-# Roughly find approximate intersection points
+    rough_grid_finding_flag = True
+
+    # Roughly find approximate intersection points
     gridfndr = imgprc.rough_grid_finding(
         field_size=rough_summation_field_width,
         line_thickness=line_thickness,
@@ -179,10 +186,13 @@ recombine.process()
 final = recombine.get_result()
 
 # User selects / deselects points for export
-final.select_intersections(title="Check refined points before export. Are they on the intersections? Deselect them if not.", standard_selection_mode="Deselect")
+final.select_intersections(title="Check refined points before export. Are they on the intersections? Deselect them if not.", color_mode="color", standard_selection_mode="Deselect")
+if rough_grid_finding_flag:
+    final.pick_zero(color_mode="color", title="Pick the zero point of the grid.")
 final.show_intersections(title="Check points again before export. Close window to export.")
 final.export()
 
+# TODO Zero point picker for imported points. Include zero point information in grid class & export
 
 # TODO Punkte im 2. Bild verschieben & setzen können: grösserer Aufwand (Event handling) - Auf Eis gelegt
 
