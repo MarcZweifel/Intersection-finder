@@ -16,22 +16,22 @@ import imageprocessor as imgprc
 mode = "color"
 
 # Resolution in pixel/mm
-resolution = 240.4333333
+resolution = 480.9
 
 # Binarization parameters:
 # If mode is "gray only the red channel (r) is used.
 # ******************************************************************
 # Color channel (RGB) thresholds:
-r_threshold = 40
-g_threshold = 60
-b_threshold = 60
+r_threshold = 230 #40
+g_threshold = 230 #60
+b_threshold = 230 #60
 
 # Color channel (RGB) binarization inverted:
 # True: pixel value > threshold => 0
 # False: pixel value < threshold => 0
-r_is_inverted = True
-g_is_inverted = True
-b_is_inverted = True
+r_is_inverted = False # True
+g_is_inverted = False # True
+b_is_inverted = False # True
 
 # Rough intersection finding parameter:
 # ******************************************************************
