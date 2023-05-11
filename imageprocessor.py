@@ -6,6 +6,7 @@ import numpy as np
 from tkinter import filedialog
 import csv
 from scipy.optimize import least_squares
+import sys
 
 import exporter
 
@@ -218,7 +219,8 @@ class grid():
 
         if image is None:
             # Scale by specified factor
-            image = self.image.scale_image(factor)
+            if self.image is not None:
+                image = self.image.scale_image(factor)
             
         else:
             # Fit onto image (standard behavior)
@@ -229,7 +231,7 @@ class grid():
         origin_scaled = [c*factor for c in self.origin]
         resolution = self.resolution*factor
 
-        return grid(intersections=intersections, image=image, origin=origin_scaled, mask=self.mask[1:-1,1:-1], resolution=resolution)
+        return grid(intersections=intersections, image=image, origin=origin_scaled, mask=self.mask[1:-1,1:-1], resolution=resolution, zero_index=self.zero_index)
 
     def activate(self, coords):
         """Activate intersections at specified row-column-coordinates. (Not fully implemented & used!)
@@ -265,7 +267,7 @@ class grid():
     def export(self):
         """Export the unmasked intersections coordinates to a csv-file. The coordinates are in mm relative to the upper left corner of the image."""
 
-        resolution = self.image.resolution
+        resolution = self.resolution
 
         # File dialoge for user selection of the file path
         file_path = filedialog.asksaveasfilename(
