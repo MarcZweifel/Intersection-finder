@@ -5,6 +5,11 @@ from matplotlib.collections import PathCollection
 import numpy as np
 from tkinter import filedialog
 import csv
+from scipy.optimize import least_squares
+
+import exporter
+
+# plt.rcParams["font.family"] = "Neue Haas Grotesk Text Pro"
 
 debug_mode = False # Shows summation peaks during line finding
 
@@ -59,8 +64,14 @@ class grid():
     origin: origin of the grid (upper left corner of image)
     mask: (n+2 x m+2)-np.array filled with bools: True = ignore point; False = Consider point"""
 
-    def __init__(self, grid_lines=None, intersections=None, image=None, origin=[0,0], mask=None, zero_index=None):
+    def __init__(self, grid_lines=None, intersections=None, image=None, origin=None, mask=None, zero_index=None, resolution=None):
         
+        if origin is None:
+            origin = [0, 0]
+        
+        if resolution is None:
+            resolution = 1
+
         if intersections is not None:
             self.intersections = intersections
             self.intersections[0,:,:] -= origin[0]
@@ -74,7 +85,7 @@ class grid():
             self.intersections = np.array(np.meshgrid(grid_data[0], grid_data[1]))
         
         else:
-            self.intersections = np.full((2,1,1), None)    
+            self.intersections = np.empty((2,0,0))  
 
         # Save number of gridlines as image_size
         row_size = self.intersections.shape[1]
@@ -82,19 +93,34 @@ class grid():
         self.grid_size = image_size(col_size, row_size)
 
         # Create mask
-        self.mask = np.full((row_size+2, col_size+2), True)
-        if mask is not None:
-            self.mask[1:-1, 1:-1] = mask[:,:]
+        self.create_mask(mask)
 
         # Save corresponding image & origin
         self.image = image
-        self.scale = self.image.scale
-        self.origin = origin # [0,0] = top result[c, 0], positive directions are result[c, ] & down
+        if self.image is not None:
+            self.scale = self.image.scale
+            self.resolution = self.image.resolution
+        else:
+            self.scale = 1
+            self.resolution = resolution
+        self.origin = origin
 
         # Grid zero point information
         self.zero_index = zero_index
         if zero_index is not None:
             self.zero = self.intersections[:, zero_index[0], zero_index[1]]
+    
+    def create_mask(self, mask=None, shape=None):
+        shape = (self.intersections.shape[1]+2, self.intersections.shape[2]+2)
+        if mask is not None:
+            if type(mask) is bool:
+                self.mask = np.full(shape, True)
+                self.mask[1:-1, 1:-1] = mask
+            else:
+                self.mask = np.full((mask.shape[0]+2, mask.shape[1]+2), True)
+                self.mask[1:-1, 1:-1] = mask[:,:]
+        else:
+            self.mask = np.full(shape, True)
 
     def select_intersections(self, color_mode="gray", title=None, standard_selection_mode="Select"):
         """Function for setting the intersection mask from user selection."""
@@ -152,30 +178,40 @@ class grid():
         
         plt.show()        
         
-    def show_intersections(self, mode="gray", title=None):
+    def show_intersections(self, mode="gray", title=None, plot_axes=False, axis=None, color=None, label=None):
         """Show all unmasked intersection with corresponding image in the specified color mode. Set the plot title."""
-
+        if axis is None:
+            fig, ax = plt.subplots()
+        
+        else:
+            ax = axis
+        
         # Plot image in the color mode only if it exists
         if self.image is not None:
             if mode == "gray":
-                plt.imshow(self.image.image_data, cmap="gray")
+                ax.imshow(self.image.image_data, cmap="gray")
             elif mode == "color":
-                plt.imshow(self.image.image_data)
+                ax.imshow(self.image.image_data)
             else:
                 raise ValueError("mode must be 'gray' or 'color'.")
-        
+
         # Set title
         if title is not None:
             plt.title(title)
+
+        color = color if color is not None else "b"
 
         # Extract unmasked points & plot them
         xv = self.intersections[0, :,:]
         xv = xv[np.logical_not(self.mask[1:-1, 1:-1])]
         yv = self.intersections[1, :,:]
         yv = yv[np.logical_not(self.mask[1:-1, 1:-1])]
-        plt.plot(xv, yv, marker=".", color="b", linestyle="none")
+        ax.plot(xv, yv, marker=".", color=color, linestyle="none", label=label)
+        if plot_axes:
+            ax.grid("on")
 
-        plt.show()
+        if axis is None:
+            plt.show()
 
     def scale_grid(self, factor=1, image=None):
         """Returns a scaled copy of the grid instance. The scaling is either determined by a specified factor or by the specified image so the grid fits the same image."""
@@ -191,8 +227,9 @@ class grid():
         # Scale grid and origin
         intersections = self.intersections[:,:,:]*factor
         origin_scaled = [c*factor for c in self.origin]
+        resolution = self.resolution*factor
 
-        return grid(intersections=intersections, image=image, origin=origin_scaled, mask=self.mask[1:-1,1:-1])
+        return grid(intersections=intersections, image=image, origin=origin_scaled, mask=self.mask[1:-1,1:-1], resolution=resolution)
 
     def activate(self, coords):
         """Activate intersections at specified row-column-coordinates. (Not fully implemented & used!)
@@ -209,7 +246,7 @@ class grid():
         return copy
 
     def get_active(self):
-        """Return (n x 2)-np.array of row-column-coordinates of unmasked intersections."""
+        """Return (n x 4)-np.array containing x-y- and row-column-coordinates of unmasked intersections."""
 
         mask = self.mask[1:-1, 1:-1]
         result = self.intersections[:,np.logical_not(mask)]
@@ -242,14 +279,15 @@ class grid():
             return
 
         # Append .csv to the path to not get a generic file
-        file_path = file_path + ".csv"
+        if file_path[-4:]!=".csv":
+            file_path = file_path + ".csv"
 
         # Write data to file in required format
         with open(file_path, "w", newline="\n") as csv_file:
             csv_writer = csv.writer(csv_file)
+            csv_writer.writerow([str(self.resolution)])
             csv_writer.writerow([
-                "","Area","Mean","Min", "Max", "X", "Y", "row", "column", "zero point"
-            ])
+                "row", "column", "zero point", "Min", "Max", "X", "Y"])
             points = self.get_active()
             
             filler = np.zeros_like(points[:,0])
@@ -258,8 +296,53 @@ class grid():
                 np.equal(points[:,2], self.zero_index[0]),
                 np.equal(points[:,3], self.zero_index[1]))
 
-            output = np.stack((filler, filler, filler, filler, filler, points[:,0]/resolution, points[:,1]/resolution, points[:,2], points[:,3], zero_point), axis=1)
+            output = np.stack((points[:,2], points[:,3], zero_point, filler, filler, points[:,0]/resolution, points[:,1]/resolution), axis=1)
             csv_writer.writerows(output)
+
+    def import_points(self, file_path, mm_to_pixel=True, switch_y_direction=False):
+        with open(file_path, "r", newline="\n") as csv_file:
+            csv_reader = csv.reader(csv_file)
+            # Read resolution
+            resolution = float(next(csv_reader, None)[0])
+            # Skip header
+            next(csv_reader, None)
+
+            # Read points and its indices in the grid in csv-rows
+            points = np.empty((0,2), float)
+            indices = np.empty((0,2), int)
+            for row in csv_reader:
+                if mm_to_pixel:
+                    xpoint = float(row[5])*resolution
+                    ypoint = float(row[6])*resolution
+                else:
+                    xpoint = float(row[5])
+                    ypoint = float(row[6])
+                    resolution = 1
+
+                if switch_y_direction:
+                    ypoint = -ypoint
+
+                points = np.append(points, np.array([[xpoint, ypoint]]), axis=0)
+                indices = np.append(indices, np.array([row[0:2]], dtype=float).astype(int), axis=0)
+                if bool(int(float(row[2]))):
+                    zero_index = np.array(row[0:2], dtype=float).astype(int)
+        
+        # Use minimal amount of masked points
+        row_min = indices[:,0].min()
+        row_max = indices[:,0].max()
+        col_min = indices[:,1].min()
+        col_max = indices[:,1].max()
+        shape = (2 ,row_max-row_min+1, col_max-col_min+1)
+        mask = np.full(shape[1:], True)
+        intersections = np.full(shape, np.NaN)
+        for point, [row, column] in zip(points, indices):
+            intersections[:,row-row_min, column-col_min] = point
+            mask[row-row_min, column-col_min] = False
+        zero_index[0] -= row_min
+        zero_index[1] -= col_min
+        self.__init__(intersections=intersections, image=self.image, mask=mask, zero_index=zero_index, resolution=resolution)
+        if self.image is not None:
+            self.place_zero(title="Place the zero point of the grid on the image.")
 
     def pick_zero(self, color_mode="gray", title=None):
         """Function to pick the zero point of the grid from existing intersection points."""
@@ -286,6 +369,8 @@ class grid():
         if self.intersections is None:
             return
         
+        self.compress()
+
         fig, ax = plt.subplots()
         fig.set_size_inches(9, 6)
         
@@ -365,6 +450,65 @@ class grid():
 
         fig.canvas.mpl_connect("button_press_event", on_click)
         plt.show()
+
+    def compress(self):
+        mask = self.mask[1:-1, 1:-1]
+        rows_keep = np.count_nonzero(mask, axis=1)
+        rows_keep = np.flatnonzero(np.logical_not(rows_keep == self.intersections.shape[2]))
+        columns_keep = np.count_nonzero(mask, axis=0)
+        columns_keep = np.flatnonzero(np.logical_not(columns_keep == self.intersections.shape[1]))
+        self.intersections = self.intersections[:,rows_keep, :]
+        self.intersections = self.intersections[:, :, columns_keep]
+        mask = mask[rows_keep,:]
+        mask = mask[:, columns_keep]
+        self.create_mask(mask)
+    
+    def move_origin_to_zero(self):
+        self.origin[:] = self.zero[:]
+        self.intersections[0,:,:] -= self.zero[0]
+        self.intersections[1,:,:] -= self.zero[1]
+
+    def get_x_axis_points(self):
+        mask = self.get_mask()[self.zero_index[0],:]
+        return  self.intersections[:,self.zero_index[0],np.logical_not(mask)]
+
+    def rotate_grid_to_x(self):
+        def fun(params, x, y):
+            return params[0]*x + params[1] - y
+        
+        params_init = [0,0]
+        points = self.get_x_axis_points()
+        x = points[0]
+        y = points[1]
+        result = least_squares(fun, x0=params_init, args=(x,y))
+        rad = np.arctan(result.x[0])
+
+        rotation_matrix = np.array([
+            [np.cos(rad), np.sin(rad)],
+            [-np.sin(rad), np.cos(rad)]])
+        
+        for [row, column] in np.ndindex(self.intersections.shape[1:]):
+            vector = self.intersections[:,row,column]
+            self.intersections[:,row, column] = np.dot(rotation_matrix, vector)
+
+    def set_grid_from_list(self, list):
+        pass
+
+    def get_mask(self):
+        return self.mask[1:-1, 1:-1]
+
+    def evaluate_for_active(self, func1, func2=None):
+        mask = self.get_mask()
+        intersections = self.intersections.copy()
+        for i, j in np.ndindex((self.grid_size.y, self.grid_size.x)):
+            x, y = intersections[:,i,j]
+            if func2 is None:
+                intersections[:,i,j] = func1(x, y) if not mask[i,j] else intersections[:,i,j]
+            else:
+                intersections[0,i,j] = func1(x, y) if not mask[i,j] else x
+                intersections[1,i,j] = func2(x, y) if not mask[i,j] else y
+        
+        return grid(intersections=intersections, mask=mask, zero_index=self.zero_index)
 
 class point_selector():
     """Class for handling the intersection selection process.
@@ -806,7 +950,7 @@ class rough_grid_finding(process):
 
         if debug_mode:
             plt.plot(sum)
-            plt.plot([0, len(sum)], [self.threshold, self.threshold])
+            plt.plot([0, len(sum)-1], [self.threshold, self.threshold])
             plt.title(location)
             plt.show()
 
@@ -1155,8 +1299,9 @@ class vector_intersection(process):
         # Plot local image and found line crossings for debugging purposes
         global debug_mode
         if debug_mode:
+            
             plt.imshow(self.before.image.image_data, cmap="gray")
-            plt.scatter([n_x, e_x, s_x, w_x], [n_y, e_y, s_y, w_y])
+            plt.scatter([n_x, s_x, e_x, w_x],[n_y, s_y, e_y, w_y])
             plt.show()
 
         return np.array([
@@ -1169,14 +1314,14 @@ class vector_intersection(process):
     def find_intersection(self, edge_points): 
         """Function to find a Line–line intersection from given edge points. https://en.wikipedia.org/wiki/Line%E2%80%93line_intersection"""
 
-        x1, x2, x3, x4 = edge_points[:,1]
+        x1, x2, x3, x4 = edge_points[:,1] # Switched because of inverted y-axis
         y1, y2, y3, y4 = edge_points[:,0]
 
-        px = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / (
+        py = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / (
                 (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4))
-        py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / (
+        px = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / (
                 (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4))
-        return [[py], [px]]
+        return [[px], [py]]
 
 class recombining(process):
     """Class for recombining an array of refined intersection points to a big grid.

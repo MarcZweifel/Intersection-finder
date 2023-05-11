@@ -5,6 +5,7 @@ import numpy as np
 import sys
 import csv
 import imageprocessor as imgprc
+import exporter
 
 # ******************************************************************
 # Program variables:
@@ -102,40 +103,8 @@ file_path = fd.askopenfilename(
 # User chose file:
 if file_path:
     rough_grid_finding_flag = False
-    with open(file_path, "r", newline="\n") as csv_file:
-        csv_reader = csv.reader(csv_file)
-        # Skip header
-        next(csv_reader, None)
-
-        # Read points and its indices in the grid in csv-rows
-        points = np.empty((0,2), float)
-        indices = np.empty((0,2), int)
-        for row in csv_reader:
-            xpoint = float(row[5])*resolution
-            ypoint = float(row[6])*resolution
-            
-            points = np.append(points, np.array([[xpoint, ypoint]]), axis=0)
-            indices = np.append(indices, np.array([row[7:9]], dtype=float).astype(int), axis=0)
-            if bool(int(float(row[9]))):
-                zero_index = np.array(row[7:9], dtype=float).astype(int)
-        
-        # Use minimal amount of masked points
-        row_min = indices[:,0].min()
-        row_max = indices[:,0].max()
-        col_min = indices[:,1].min()
-        col_max = indices[:,1].max()
-
-        shape = (2 ,row_max-row_min+1, col_max-col_min+1)
-        mask = np.full(shape[1:], True)
-        intersections = np.full(shape, np.NaN)
-
-        for point, [row, column] in zip(points, indices):
-            intersections[:,row-row_min, column-col_min] = point
-            mask[row-row_min, column-col_min] = False
-        zero_index[0] -= row_min
-        zero_index[1] -= col_min
-        grid = imgprc.grid(intersections=intersections, image=img_bin, mask=mask, zero_index=zero_index)
-        grid.place_zero(title="Place the zero point of the grid on the image.")
+    grid = imgprc.grid(image=img_bin)
+    grid.import_points(file_path)
 
 # User hit cancel
 else:
@@ -192,11 +161,12 @@ if rough_grid_finding_flag:
 final.show_intersections(title="Check points again before export. Close window to export.")
 final.export()
 
+
+
+
 # TODO Zero point picker for imported points. Include zero point information in grid class & export
 
 # TODO Punkte im 2. Bild verschieben & setzen können: grösserer Aufwand (Event handling) - Auf Eis gelegt
-
-# TODO Konversion zu mm mithilfe der Auflösung (Warten auf Antwort von Keyence Vertreter)
 
 # TODO Schnittstelle zum Skript von Matthias. (Siehe Teams Ordner) - Fast fertig: Noch Koordinatensystem anpassen
 
