@@ -5,7 +5,6 @@ import numpy as np
 import sys
 import csv
 import imageprocessor as imgprc
-import exporter
 
 # ******************************************************************
 # Program variables:

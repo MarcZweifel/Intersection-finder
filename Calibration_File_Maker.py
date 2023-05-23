@@ -77,9 +77,11 @@ meas_grid.show_intersections(plot_axes=True, title="Imported (red) & rotated (bl
 plt.show()
 
 # Define the distance between x rows and y columns
-# TODO Replace by input() function
-dx = 2.80932
-dy = 2.80932
+
+dx = input("Input the line spacing in X-direction.")
+dy = input("Input the line spacing in Y-direction.")
+# dx = 2.80932
+# dy = 2.80932
 
 ideal_grid = create_ideal_grid(meas_grid, dx, dy)
 

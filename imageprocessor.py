@@ -8,8 +8,6 @@ import csv
 from scipy.optimize import least_squares
 import sys
 
-import exporter
-
 # plt.rcParams["font.family"] = "Neue Haas Grotesk Text Pro"
 
 debug_mode = False # Shows summation peaks during line finding
