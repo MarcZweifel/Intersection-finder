@@ -80,8 +80,8 @@ plt.show()
 
 # Define the distance between x rows and y columns
 
-dx = input("Input the line spacing in X-direction.")
-dy = input("Input the line spacing in Y-direction.")
+dx = float(input("Input the line spacing in X-direction in mm.\n"))
+dy = float(input("Input the line spacing in Y-direction in mm.\n"))
 # dx = 2.80932
 # dy = 2.80932
 
