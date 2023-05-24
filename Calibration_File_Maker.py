@@ -68,6 +68,8 @@ meas_grid = grid()
 meas_grid.import_points(file_path, mm_to_pixel=False, switch_y_direction=True)
 meas_grid.move_origin_to_zero()
 
+# TODO Maybe use point selector here do disable invalid points from BeamGage fast.
+
 fig, ax = plt.subplots()
 
 meas_grid.show_intersections(plot_axes=True, axis=ax, color="r")
