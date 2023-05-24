@@ -1,5 +1,6 @@
 Example_grids/
 Example_exports/
 __pycache__/
+test/
 tester.py
 exporter.py
