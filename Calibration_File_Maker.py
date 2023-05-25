@@ -49,7 +49,7 @@ def aerotech_exporter(deviations, counts_per_unit):
 #----------------------------------------------------------------------------------------------------------------------
 
 # open a file dialog to select a CSV file
-file_path = filedialog.askopenfilename(title="Select the array with x and y positions and deviation from the calibration before", filetypes=[('CSV Files', '*.csv')])
+file_path = filedialog.askopenfilename(initialdir="~/Desktop" ,title="Select the array with x and y positions and deviation from the calibration before", filetypes=[('CSV Files', '*.csv')])
 if file_path:
     prev_cal_dev = grid()
     prev_cal_dev.import_points(file_path, mm_to_pixel=False)
@@ -69,23 +69,29 @@ meas_grid.import_points(file_path, mm_to_pixel=False, switch_y_direction=True)
 meas_grid.move_origin_to_zero()
 
 # TODO Maybe use point selector here do disable invalid points from BeamGage fast.
-
-fig, ax = plt.subplots()
-
-meas_grid.show_intersections(plot_axes=True, axis=ax, color="r")
-meas_grid.rotate_grid_to_x()
-meas_grid.show_intersections(plot_axes=True, title="Imported (red) & rotated (blue) points", axis=ax)
-
-plt.show()
-
 # Define the distance between x rows and y columns
 
-dx = float(input("Input the line spacing in X-direction in mm.\n"))
-dy = float(input("Input the line spacing in Y-direction in mm.\n"))
+dx = float(input("Input the ideal line spacing of the measured grid in X-direction in mm.\n"))
+dy = float(input("Input the ideal line spacing of the measured grid in Y-direction in mm.\n"))
 # dx = 2.80932
 # dy = 2.80932
 
 ideal_grid = create_ideal_grid(meas_grid, dx, dy)
+
+fig, ax = plt.subplots()
+fig.set_size_inches(9, 6)
+ideal_grid.show_intersections(axis=ax, color="c")
+meas_grid.select_intersections(title="Deselect intersections to exclude from rotation correction.", axis=ax, standard_selection_mode="Deselect")
+
+# Rotate grid
+meas_grid.rotate_grid_to_x()
+
+fig, ax = plt.subplots()
+fig.set_size_inches(9, 6)
+ideal_grid.show_intersections(plot_axes=True, axis=ax, color="c")
+meas_grid.select_intersections(title="Deselect the intersections you want to exclude from interpolation", axis=ax, standard_selection_mode="Deselect")
+
+ideal_grid.create_mask(mask=meas_grid.get_mask())
 
 mx = meas_grid.get_active()[:,0]
 my = meas_grid.get_active()[:,1]
@@ -104,6 +110,7 @@ ax.set_xlabel('X')
 ax.set_ylabel('Y')
 ax.legend()
 plt.show()
+ideal_grid.create_mask(mask=meas_grid.get_mask())
 
 rbf3_y = Rbf(ix, iy, dy, function="multiquadric", smooth=0)
 rbf3_x = Rbf(ix, iy, dx, function="multiquadric", smooth=0)

@@ -121,12 +121,17 @@ class grid():
         else:
             self.mask = np.full(shape, True)
 
-    def select_intersections(self, color_mode="gray", title=None, standard_selection_mode="Select"):
+    def select_intersections(self, color_mode="gray", title=None, standard_selection_mode="Select", axis=None):
         """Function for setting the intersection mask from user selection."""
 
         # Initialize figure & plot axis
-        fig, ax = plt.subplots()
-        fig.set_size_inches(9, 6)
+        if axis is None:
+            fig, ax = plt.subplots()
+            fig.set_size_inches(9, 6)
+        
+        else:
+            ax = axis
+            fig = ax.figure
 
         # Define selection handler instance
         selector = point_selector(fig.canvas, self, ax, mode=standard_selection_mode)
@@ -205,7 +210,10 @@ class grid():
         xv = xv[np.logical_not(self.mask[1:-1, 1:-1])]
         yv = self.intersections[1, :,:]
         yv = yv[np.logical_not(self.mask[1:-1, 1:-1])]
-        ax.plot(xv, yv, marker=".", color=color, linestyle="none", label=label)
+        if label is not None:
+            ax.plot(xv, yv, marker=".", color=color, linestyle="none", label=label)
+        else:
+            ax.plot(xv, yv, marker=".", color=color, linestyle="none")
         if plot_axes:
             ax.grid("on")
 
