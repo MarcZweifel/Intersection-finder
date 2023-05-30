@@ -951,7 +951,8 @@ class rough_grid_finding(process):
         # Indirectly map location keyword to summation direction
         axis_num = {"x":1, "y":0}[axis_size_dir]
         sum = np.sum(field, axis=axis_num)
-        sum = sum/max(sum) # Normalize sum array
+        if max(sum) != 0:
+            sum = sum/max(sum) # Normalize sum array
 
         # Plot sum array if in debug mode
         global debug_mode
