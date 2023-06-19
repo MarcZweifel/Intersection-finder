@@ -37,7 +37,7 @@ def aerotech_exporter(deviations, counts_per_unit):
     with open(file_path, "w", newline="") as csv_file:
         csv_writer = csv.writer(csv_file, lineterminator="\n")
         
-        for i in range(deviations.grid_size.y):
+        for i in range(deviations.grid_size.y-1,-1,-1):
             line = []
             for j in range(deviations.grid_size.x):
                 dx = round(deviations.intersections[0,i,j] * counts_per_unit, 5)
@@ -49,10 +49,10 @@ def aerotech_exporter(deviations, counts_per_unit):
 #----------------------------------------------------------------------------------------------------------------------
 
 # open a file dialog to select a CSV file
-file_path = filedialog.askopenfilename(initialdir="~/Desktop" ,title="Select the array with x and y positions and deviation from the calibration before", filetypes=[('CSV Files', '*.csv')])
+file_path = filedialog.askopenfilename(initialdir="~/Desktop" ,title="Select the array with x and y corrections from the calibration before", filetypes=[('CSV Files', '*.csv')])
 if file_path:
     prev_cal_dev = grid()
-    prev_cal_dev.import_points(file_path, mm_to_pixel=False)
+    prev_cal_dev.import_points(file_path, mm_to_pixel=False, switch_y_direction=False)
     first_calibration_flag = False
 else:
     first_calibration_flag = True
@@ -68,7 +68,7 @@ meas_grid = grid()
 meas_grid.import_points(file_path, mm_to_pixel=False, switch_y_direction=True)
 meas_grid.move_origin_to_zero()
 
-# TODO Maybe use point selector here do disable invalid points from BeamGage fast.
+
 # Define the distance between x rows and y columns
 
 dx = float(input("Input the ideal line spacing of the measured grid in X-direction in mm.\n"))
@@ -112,11 +112,15 @@ ax.legend()
 plt.show()
 ideal_grid.create_mask(mask=meas_grid.get_mask())
 
-rbf3_y = Rbf(ix, iy, dy, function="multiquadric", smooth=0)
-rbf3_x = Rbf(ix, iy, dx, function="multiquadric", smooth=0)
+smoothing = float(input("Input the smoothing factor for the interpolation:\n"))
 
-xs = np.linspace(-22.474, 22.474, 65) # some extrapolation to negative numbers
-ys = np.linspace(-22.474, 22.474, 65) # some extrapolation to negative numbers
+rbf3_y = Rbf(ix, iy, dy, function="multiquadric", smooth=smoothing)
+rbf3_x = Rbf(ix, iy, dx, function="multiquadric", smooth=smoothing)
+
+counts_per_unit = int(input("Input counts per unit of the scanner:\n"))
+
+xs = np.linspace(-32768/counts_per_unit, 32767/counts_per_unit, 65) # some extrapolation to negative numbers // used to be +/- 22.474
+ys = np.linspace(32767/counts_per_unit, -32768/counts_per_unit, 65) # some extrapolation to negative numbers
 cal_grid = grid(grid_lines=[xs, ys], mask=False, zero_index=[(65-1)//2, (65-1)//2])
 cal_deviations = cal_grid.evaluate_for_active(func1=rbf3_x, func2=rbf3_y)
 
@@ -151,13 +155,8 @@ ax.set_title('3D Plot of Distance in X')
 # show plot
 plt.show()
 
-factor = 0.92
-
-if first_calibration_flag:
-    cal_deviations = cal_deviations.scale_grid(factor=factor)
-
-else:
+if not first_calibration_flag:
     cal_deviations.intersections[:,:,:] += prev_cal_dev.intersections[:,:,:]
 
 cal_deviations.export()
-aerotech_exporter(cal_deviations, 1458)
+aerotech_exporter(cal_deviations, counts_per_unit)

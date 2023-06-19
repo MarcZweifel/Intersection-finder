@@ -16,15 +16,15 @@ import imageprocessor as imgprc
 mode = "color"
 
 # Resolution in pixel/mm
-resolution = 480.9
+resolution = 484
 
 # Binarization parameters:
 # If mode is "gray only the red channel (r) is used.
 # ******************************************************************
 # Color channel (RGB) thresholds:
-r_threshold = 230 #40
-g_threshold = 230 #60
-b_threshold = 230 #60
+r_threshold = 235 #40
+g_threshold = 235 #60
+b_threshold = 235 #60
 
 # Color channel (RGB) binarization inverted:
 # True: pixel value > threshold => 0
