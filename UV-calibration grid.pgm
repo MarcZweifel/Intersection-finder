@@ -1,0 +1,100 @@
+DVAR $x_num, $y_num, $x_dis, $y_dis, $x_end, $y_end, $mech_speed, $skywrite_x, $skywrite_y, $skywrite_u, $skywrite_v, $x_l_s, $y_l_s
+DVAR $opt_speed, $v_pos, $u_pos, $skywrite_u, $skywrite_v, $u_kreuz_l, $u_kreuz_r, $v_kreuz_o, $v_kreuz_u $u_l_s_l, $v_l_s_u, $u_l_s_r, $v_l_s_o, $x_count, $y_count
+DVAR $Nachricht
+
+// Laser power: IPG 20W @ 50%
+// Pulse frequency: 300 kHz
+
+VELOCITY ON
+G359
+
+//Variable to define before lasering the grid
+$opt_speed = 400  //was 200
+$x_num = 17
+$y_num = $x_num
+$x_dis = 2.5	// Results in a 40mm x 40mm field
+$y_dis = 2.5
+
+//Global variable only define if you know what they mean
+$skywrite_x = 1
+$skywrite_y = 1
+$skywrite_u = 0.3
+$skywrite_v = 0.3
+
+// Variable which are generated and should not be changed
+$x_end = ($x_num-1) * $x_dis / 2
+$y_end = ($y_num-1) * $y_dis / 2
+$x_l_s = $x_end + $skywrite_x
+$y_l_s = $y_end + $skywrite_y
+
+$u_kreuz_l = - (0.3 / 2)
+$u_kreuz_r = (0.3 / 2)
+$v_kreuz_o = (0.3 / 2)
+$v_kreuz_u = - (0.3 / 2)
+$u_l_s_l = $u_kreuz_l - $skywrite_u
+$u_l_s_r = $u_kreuz_r + $skywrite_u
+$v_l_s_o = $v_kreuz_o + $skywrite_v
+$v_l_s_u = $v_kreuz_u - $skywrite_v
+
+G90 G0 Z(Fok)
+
+REPEAT 1
+	VELOCITY ON
+	CRITICAL START
+	F$opt_speed
+	// l,o nach r,u
+	G90 G01 U$u_l_s_l V$v_l_s_o
+	G90 G01 U$u_kreuz_l V$v_kreuz_o
+	L1
+	G90 G01 U$u_kreuz_r V$v_kreuz_u
+	L0
+	G90 G01 U$u_l_s_r V$v_l_s_u
+	
+	// r,o nach l,u
+	G90 G01 U$u_l_s_r+0.2 V$v_l_s_o+0.2
+	G90 G01 U$u_kreuz_r+0.2 V$v_kreuz_o+0.2
+	L1
+	G90 G01 U$u_kreuz_l V$v_kreuz_u
+	L0
+	G90 G01 U$u_l_s_l V$v_l_s_u
+	
+	VELOCITY OFF
+	CRITICAL END
+END REPEAT
+L0
+DWELL 1
+///////////////////////////////////////////////////////////////Lines in u- and v direction with optical axis
+' lines along the x-axis
+CRITICAL START
+VELOCITY ON
+F$opt_speed
+G90 G08 G01 V$y_end
+REPEAT $x_num 
+	G90 G08 G01 U-$x_l_s
+	G90 G08 G01 U-$x_end
+	L1
+	G90 G08 G01 U$x_end
+	L0
+	G90 G08 G01 U$x_l_s
+	G91 G08 G01 V-$y_dis
+END REPEAT
+CRITICAL END
+
+' lines along the y-axis
+CRITICAL START
+G90 G08 G01 U$x_end
+F$opt_speed
+REPEAT $y_num 
+	G90 G08 G01 V-$y_l_s
+	G90 G08 G01 V-$y_end
+	L1
+	G90 G08 G01 V$y_end
+	L0
+	G90 G08 G01 V$y_l_s
+	G91 G08 G01 U-$x_dis
+END REPEAT
+G90 G08 G01 U0 V0
+VELOCITY OFF
+CRITICAL END
+///////////////////////////////////////////////////////////////
+

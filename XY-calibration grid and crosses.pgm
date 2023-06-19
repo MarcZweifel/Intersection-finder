@@ -1,0 +1,140 @@
+DVAR $x_num, $y_num, $x_dis, $y_dis, $x_end, $y_end, $mech_speed, $skywrite_x, $skywrite_y, $skywrite_u, $skywrite_v, $x_l_s, $y_l_s
+DVAR $opt_speed, $v_pos, $u_pos, $skywrite_u, $skywrite_v, $u_kreuz_l, $u_kreuz_r, $v_kreuz_o, $v_kreuz_u $u_l_s_l, $v_l_s_u, $u_l_s_r, $v_l_s_o, $x_count, $y_count
+DVAR $Nachricht
+
+// With IPG Setup
+G90 G08 G01 U0 V0 F100
+// With IPG Setup
+
+
+VELOCITY ON
+G359
+POSOFFSET SET X0 Y0
+//Variable to define before lasering the grid
+$mech_speed = 1
+$opt_speed = 200
+$x_num = 13
+$y_num = $x_num
+$x_dis = 2.7826
+$y_dis = 2.7826
+
+//Global variable only define if you know what they mean
+$skywrite_x = 1
+$skywrite_y = 1
+$skywrite_u = 0.3
+$skywrite_v = 0.3
+
+// Variable which are generated and should not be changed
+$x_end = ($x_num-1) * $x_dis / 2
+$y_end = ($y_num-1) * $y_dis / 2
+$x_l_s = $x_end + $skywrite_x
+$y_l_s = $y_end + $skywrite_y
+
+///////////////////////////////////////////////////////////////Lines in x- and y direction with mechanical axis
+
+F$mech_speed
+' lines along the x-axis
+CRITICAL START
+VELOCITY ON
+G90 G08 G01 Y$y_end
+F$mech_speed
+REPEAT $x_num 
+	G90 G08 G01 X-$x_l_s
+	G90 G08 G01 X-$x_end
+	L1
+	G90 G08 G01 X$x_end
+	L0
+	G90 G08 G01 X$x_l_s
+	G91 G08 G01 Y-$y_dis
+END REPEAT
+
+CRITICAL END
+
+' lines along the y-axis
+CRITICAL START
+G90 G08 G01 X$x_end
+F$mech_speed
+REPEAT $y_num 
+	G90 G08 G01 Y-$y_l_s
+	G90 G08 G01 Y-$y_end
+	L1
+	G90 G08 G01 Y$y_end
+	L0
+	G90 G08 G01 Y$y_l_s
+	G91 G08 G01 X-$x_dis
+END REPEAT
+G90 G08 G01 X0 Y0
+VELOCITY OFF
+CRITICAL END
+///////////////////////////////////////////////////////////////
+
+$Nachricht = MSGBOX DF_ICON_CRITICAL + DF_MSGBOX_OKONLY, "Please change the power to the value to engrave lines"
+
+///////////////////////////////////////////////////////////////crosses in 45° towards u- and v direction with opticalaxis
+// $u_kreuz_l, $u_l_s_l sind links
+// $u_kreuz_r, $u_l_s_r sind rechts
+// $v_kreuz_o, $v_l_s_o sind oben
+// $v_kreuz_u, $v_l_s_u sind unten
+// _l_s_ sind Skywritelinien
+// Die Kreuze sind so konzipiert, dass die Seitenläne 0.3 mm beträgt und die gelaserte Länge 0.4242 mm
+VELOCITY ON
+G360
+$x_count = 0
+$y_count = 1
+$skywrite_u = 0.2
+$skywrite_v = 0.2
+
+$u_kreuz_l = -$x_end - (0.3 / 2)
+$u_kreuz_r = -$x_end + (0.3 / 2)
+$v_kreuz_o = $y_end + (0.3 / 2)
+$v_kreuz_u = $y_end - (0.3 / 2)
+$u_l_s_l = $u_kreuz_l - $skywrite_u
+$u_l_s_r = $u_kreuz_r + $skywrite_u
+$v_l_s_o = $v_kreuz_o + $skywrite_v
+$v_l_s_u = $v_kreuz_u - $skywrite_v
+
+F$opt_speed
+
+REPEAT $y_num
+	REPEAT $x_num
+		REPEAT 1
+			CRITICAL START
+			G90 G01 U$u_l_s_l V$v_l_s_o
+			G90 G01 U$u_kreuz_l V$v_kreuz_o
+			L1
+			G90 G01 U$u_kreuz_r V$v_kreuz_u
+			L0
+			G90 G01 U$u_l_s_r V$v_l_s_u
+
+			G90 G01 U$u_l_s_r V$v_l_s_o
+			G90 G01 U$u_kreuz_r V$v_kreuz_o
+			L1
+			G90 G01 U$u_kreuz_l V$v_kreuz_u
+			L0
+			G90 G01 U$u_l_s_l V$v_l_s_u
+			CRITICAL END
+		END REPEAT
+		$x_count = $x_count + 1
+		$u_kreuz_l = -$x_end - (0.3 / 2) + $x_count * $x_dis
+		$u_kreuz_r = -$x_end + (0.3 / 2) + $x_count * $x_dis
+		$u_l_s_l = $u_kreuz_l - $skywrite_u
+		$u_l_s_r = $u_kreuz_r + $skywrite_u
+
+		
+		
+		DWELL 1
+	END REPEAT
+	$v_kreuz_o = $y_end + (0.3 / 2) - $y_count * $y_dis
+	$v_kreuz_u = $y_end - (0.3 / 2) - $y_count * $y_dis
+	$v_l_s_o = $v_kreuz_o + $skywrite_v
+	$v_l_s_u = $v_kreuz_u - $skywrite_v
+	$x_count = 0
+	$u_kreuz_l = -$x_end - (0.3 / 2) + $x_count * $x_dis
+	$u_kreuz_r = -$x_end + (0.3 / 2) + $x_count * $x_dis
+	$u_l_s_l = $u_kreuz_l - $skywrite_u
+	$u_l_s_r = $u_kreuz_r + $skywrite_u
+	$y_count = $y_count + 1
+	DWELL 1
+END REPEAT
+VELOCITY OFF
+///////////////////////////////////////////////////////////////
