@@ -1,0 +1,11 @@
+Xindex = 1; int
+Yindex = 2; int
+
+dx = 2.5; float
+dy = 2.5; float
+
+Xoffset = 100.0; float
+Xoffset = 100.0; float
+
+Xinverted = 1; bool
+Yinverted = 0; bool

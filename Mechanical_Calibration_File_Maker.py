@@ -20,9 +20,32 @@ def read_calibration_parameters():
 
     if not file_path:
         return {}
-    
+    result = {}
     with open(file_path, "r") as variable_file:
-        line = variable_file.readline()
+        
+        for idx, line in enumerate(variable_file):
+            line = line.strip("\n")
+            if not line:
+                continue
+            line = line.split("=", maxsplit=1)
+            name = line[0].strip()
+
+            value_string = line[1].split(";", maxsplit=1)
+            value = value_string[0].strip()
+            dtype = value_string[1].strip()
+
+            if dtype.lower() == "float":
+                value = float(value)
+            elif dtype.lower() == "int":
+                value = int(value)
+            elif dtype.lower() == "bool":
+                value = bool(int(value))
+            else:
+                print(f"Datatype in row {idx+1} is invalid!")
+                continue
+
+            result[name] = value
+    return result
 
 def create_ideal_grid(meas_grid, dx, dy):
     mask = meas_grid.get_mask()
@@ -61,6 +84,11 @@ def aerotech_exporter():#deviations, dlx, dly):
 
 #----------------------------------------------------------------------------------------------------------------------
 #----------------------------------------------------------------------------------------------------------------------
+
+system_configuration = read_calibration_parameters()
+
+if not system_configuration:
+    sys.exit()
 
 # open a file dialog to select a CSV file
 file_path = filedialog.askopenfilename(initialdir="~/Desktop" ,title="Select the array with x and y corrections from the calibration before", filetypes=[('CSV Files', '*.csv')])
