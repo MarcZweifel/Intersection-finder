@@ -58,7 +58,7 @@ def create_ideal_grid(meas_grid, dx, dy):
     y_pos -= y_pos[zero_index[0]]
     return grid(grid_lines=[x_pos, y_pos], mask=mask, zero_index=zero_index)
 
-def aerotech_exporter():#deviations, dlx, dly):
+def aerotech_exporter(deviations, sys_config_dict):
     file_path = filedialog.asksaveasfilename(
         title="Export aerotech calibration file",
         initialdir="~/Desktop",
@@ -69,15 +69,40 @@ def aerotech_exporter():#deviations, dlx, dly):
     if file_path[-4:]!=".cal":
             file_path = file_path + ".cal"
     
-    dlx = 2.5
-    dly = 2.5
-    nx = 15
+    XIndex = sys_config_dict["XIndex"]
+    YIndex = sys_config_dict["YIndex"]
+    XReverseMotion = sys_config_dict["XReverseMotion"]
+    YReverseMotion = sys_config_dict["YReverseMotion"]
+
+    dlx = sys_config_dict["dX"]
+    dly = sys_config_dict["dY"]
+    nx = deviations.grid_size.x
+    ny = deviations.grid_size.y
+    XOffset = sys_config_dict["XOffset"]-(nx-1-deviations.zero_index[0])*dlx
+    YOffset = sys_config_dict["YOffset"]-(ny-1-deviations.zero_index[1])*dly
+
+    corrections[:,:,:] = deviations.intersections[:,:,:]
+    if XReverseMotion:
+        corrections[0,:,:] = -corrections[0,:,:]
+        dlx = -dlx
+        XOffset = -XOffset
+
+    if YReverseMotion:
+        corrections[1,:,:] = -corrections[1,:,:]
+        dly = -dly
+        YOffset = -YOffset
     
     with open(file_path, "w") as cal_file:
         cal_file.write("'        RowAxis ColumnAxis OutputAxis1 OutputAxis2 SampDistRow SampDistCol NumCols\n")
-        cal_file.write(f":START2D    2         1          1           2          {dly}          {dlx}      {nx}\n")
+        cal_file.write(f":START2D    {YIndex}         {XIndex}          {XIndex}           {YIndex}          {dly}          {dlx}      {nx}\n")
+        cal_file.write(f"OFFSETROW={YOffset} OFFSETCOL={XOffset}")
         cal_file.write(":START2D POSUNIT=PRIMARY CORUNIT=PRIMARY OFFSETROW=0.0 OFFSETCOL=0.0\n")
-        cal_file.write("Here go the correction values.\n")
+        
+        for i in range(ny-1,-1,-1):
+            for j in range(nx):
+                cal_file.write(f"{corrections[0,i,j]}    {corrections[1,i,j]}          ")
+            cal_file.write("\n")
+
         cal_file.write(":END\n")
         cal_file.write("'\n'\n' Notes:\n' X-axis is axis 1, Y-axis is axis 2.\n' All distances are in mm.\n")
         cal_file.write("' Correction values outside of the calibration table are clipped to the outermost correction value.")
@@ -110,15 +135,12 @@ meas_grid = grid()
 meas_grid.import_points(file_path, mm_to_pixel=False, switch_y_direction=True)
 meas_grid.move_origin_to_zero()
 
-# TODO Integrate functionality in A3200 program to export a file with the offset distance, line distance, axis numbers and positive directions.
-# TODO Change inter- / extrapolation to suit mechanical calibration procedure.
-
 # Define the distance between x rows and y columns
 
-dx = float(input("Input the ideal line spacing of the measured grid in X-direction in mm.\n"))
-dy = float(input("Input the ideal line spacing of the measured grid in Y-direction in mm.\n"))
+dlx = sys_config_dict["dX"]
+dly = sys_config_dict["dY"]
 
-ideal_grid = create_ideal_grid(meas_grid, dx, dy)
+ideal_grid = create_ideal_grid(meas_grid, dlx, dly)
 
 fig, ax = plt.subplots()
 fig.set_size_inches(9, 6)
@@ -159,11 +181,14 @@ smoothing = float(input("Input the smoothing factor for the interpolation:\n"))
 rbf3_y = Rbf(ix, iy, dy, function="multiquadric", smooth=smoothing)
 rbf3_x = Rbf(ix, iy, dx, function="multiquadric", smooth=smoothing)
 
-counts_per_unit = int(input("Input counts per unit of the scanner:\n"))
+#counts_per_unit = int(input("Input counts per unit of the scanner:\n"))
 
-xs = np.linspace(-32768/counts_per_unit, 32767/counts_per_unit, 65) # some extrapolation to negative numbers // used to be +/- 22.474
-ys = np.linspace(32767/counts_per_unit, -32768/counts_per_unit, 65) # some extrapolation to negative numbers
-cal_grid = grid(grid_lines=[xs, ys], mask=False, zero_index=[(65-1)//2, (65-1)//2])
+nx = ideal_grid.grid_size.x
+ny = ideal_grid-grid_size.y
+
+xs = np.linspace(-(nx-1)//2*dlx, (nx-1)//2*dlx, nx) # some extrapolation to negative numbers // used to be +/- 22.474
+ys = np.linspace(-(ny-1)//2*dly, (ny-1)//2*dly, ny) # some extrapolation to negative numbers
+cal_grid = grid(grid_lines=[xs, ys], mask=False, zero_index=[(nx-1)//2, (ny-1)//2])
 cal_deviations = cal_grid.evaluate_for_active(func1=rbf3_x, func2=rbf3_y)
 
 points = cal_grid.get_active()[:,(0,1)]
@@ -201,4 +226,4 @@ if not first_calibration_flag:
     cal_deviations.intersections[:,:,:] += prev_cal_dev.intersections[:,:,:]
 
 cal_deviations.export()
-aerotech_exporter(cal_deviations)
+aerotech_exporter(cal_deviations, system_configuration)

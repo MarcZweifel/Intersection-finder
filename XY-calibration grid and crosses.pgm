@@ -1,11 +1,17 @@
 DVAR $x_num, $y_num, $x_dis, $y_dis, $x_end, $y_end, $mech_speed, $skywrite_x, $skywrite_y, $skywrite_u, $skywrite_v, $x_l_s, $y_l_s
 DVAR $opt_speed, $v_pos, $u_pos, $skywrite_u, $skywrite_v, $u_kreuz_l, $u_kreuz_r, $v_kreuz_o, $v_kreuz_u $u_l_s_l, $v_l_s_u, $u_l_s_r, $v_l_s_o, $x_count, $y_count
+DVAR $xStart, $yStart, $zStart
 DVAR $Nachricht
+DVAR $AxisIdxX, $AxisIdxY, $XReverseMotion, $YReverseMotion, $datafile, $filename
 
 // With IPG Setup
 G90 G08 G01 U0 V0 F100
 // With IPG Setup
-
+// Absolute position of the grid zero in machine coordinates
+$xStart = 90
+$yStart = 20
+$zStart = Fok+0.1
+G90 G01 X$xStart Y$yStart Z$zStart
 
 VELOCITY ON
 G359
@@ -15,8 +21,8 @@ $mech_speed = 1
 $opt_speed = 200
 $x_num = 13
 $y_num = $x_num
-$x_dis = 2.7826
-$y_dis = 2.7826
+$x_dis = 2.5
+$y_dis = 2.5
 
 //Global variable only define if you know what they mean
 $skywrite_x = 1
@@ -68,15 +74,9 @@ VELOCITY OFF
 CRITICAL END
 ///////////////////////////////////////////////////////////////
 
-$Nachricht = MSGBOX DF_ICON_CRITICAL + DF_MSGBOX_OKONLY, "Please change the power to the value to engrave lines"
 
-///////////////////////////////////////////////////////////////crosses in 45° towards u- and v direction with opticalaxis
-// $u_kreuz_l, $u_l_s_l sind links
-// $u_kreuz_r, $u_l_s_r sind rechts
-// $v_kreuz_o, $v_l_s_o sind oben
-// $v_kreuz_u, $v_l_s_u sind unten
-// _l_s_ sind Skywritelinien
-// Die Kreuze sind so konzipiert, dass die Seitenläne 0.3 mm beträgt und die gelaserte Länge 0.4242 mm
+
+
 VELOCITY ON
 G360
 $x_count = 0
@@ -84,10 +84,10 @@ $y_count = 1
 $skywrite_u = 0.2
 $skywrite_v = 0.2
 
-$u_kreuz_l = -$x_end - (0.3 / 2)
-$u_kreuz_r = -$x_end + (0.3 / 2)
-$v_kreuz_o = $y_end + (0.3 / 2)
-$v_kreuz_u = $y_end - (0.3 / 2)
+$u_kreuz_l = - (0.3 / 2)
+$u_kreuz_r = (0.3 / 2)
+$v_kreuz_o = (0.3 / 2)
+$v_kreuz_u = - (0.3 / 2)
 $u_l_s_l = $u_kreuz_l - $skywrite_u
 $u_l_s_r = $u_kreuz_r + $skywrite_u
 $v_l_s_o = $v_kreuz_o + $skywrite_v
@@ -95,46 +95,53 @@ $v_l_s_u = $v_kreuz_u - $skywrite_v
 
 F$opt_speed
 
-REPEAT $y_num
-	REPEAT $x_num
-		REPEAT 1
-			CRITICAL START
-			G90 G01 U$u_l_s_l V$v_l_s_o
-			G90 G01 U$u_kreuz_l V$v_kreuz_o
-			L1
-			G90 G01 U$u_kreuz_r V$v_kreuz_u
-			L0
-			G90 G01 U$u_l_s_r V$v_l_s_u
-
-			G90 G01 U$u_l_s_r V$v_l_s_o
-			G90 G01 U$u_kreuz_r V$v_kreuz_o
-			L1
-			G90 G01 U$u_kreuz_l V$v_kreuz_u
-			L0
-			G90 G01 U$u_l_s_l V$v_l_s_u
-			CRITICAL END
-		END REPEAT
-		$x_count = $x_count + 1
-		$u_kreuz_l = -$x_end - (0.3 / 2) + $x_count * $x_dis
-		$u_kreuz_r = -$x_end + (0.3 / 2) + $x_count * $x_dis
-		$u_l_s_l = $u_kreuz_l - $skywrite_u
-		$u_l_s_r = $u_kreuz_r + $skywrite_u
-
-		
-		
-		DWELL 1
-	END REPEAT
-	$v_kreuz_o = $y_end + (0.3 / 2) - $y_count * $y_dis
-	$v_kreuz_u = $y_end - (0.3 / 2) - $y_count * $y_dis
-	$v_l_s_o = $v_kreuz_o + $skywrite_v
-	$v_l_s_u = $v_kreuz_u - $skywrite_v
-	$x_count = 0
-	$u_kreuz_l = -$x_end - (0.3 / 2) + $x_count * $x_dis
-	$u_kreuz_r = -$x_end + (0.3 / 2) + $x_count * $x_dis
-	$u_l_s_l = $u_kreuz_l - $skywrite_u
-	$u_l_s_r = $u_kreuz_r + $skywrite_u
-	$y_count = $y_count + 1
-	DWELL 1
+REPEAT 1
+	VELOCITY ON
+	CRITICAL START
+	F$opt_speed
+	// l,o nach r,u
+	G90 G01 U$u_l_s_l V$v_l_s_o
+	G90 G01 U$u_kreuz_l V$v_kreuz_o
+	L1
+	G90 G01 U$u_kreuz_r V$v_kreuz_u
+	L0
+	G90 G01 U$u_l_s_r V$v_l_s_u
+	
+	// r,o nach l,u
+	G90 G01 U$u_l_s_r+0.2 V$v_l_s_o+0.2
+	G90 G01 U$u_kreuz_r+0.2 V$v_kreuz_o+0.2
+	L1
+	G90 G01 U$u_kreuz_l V$v_kreuz_u
+	L0
+	G90 G01 U$u_l_s_l V$v_l_s_u
+	
+	VELOCITY OFF
+	CRITICAL END
 END REPEAT
-VELOCITY OFF
+
 ///////////////////////////////////////////////////////////////
+
+// Export System information for calibration file maker
+$filename = "Mech_Calibration_Config_#DT.txt"
+$datafile = FILEOPEN "%UserProfile%\Desktop\"+$filename, 0
+
+// Get Axis indices
+$AxisIdxX = MASKTODOUBLE X
+$AxisIdxY = MASKTODOUBLE Y
+
+// Get reverse motion direction
+$XReverseMotion = GETPARMSTRING $AxisIdxX PARAMETERID_ReverseMotionDirection
+$YReverseMotion = GETPARMSTRING $AxisIdxY PARAMETERID_ReverseMotionDirection
+
+FILEWRITE $datafile "{#U}", "XIndex = ", $AxisIdxX+1, "; int\n"
+FILEWRITE $datafile "{#U}", "YIndex = ", $AxisIdxY+1, "; int\n"
+FILEWRITE $datafile "{#U}", "XReverseMotion = ", $XReverseMotion, "; bool\n"
+FILEWRITE $datafile "{#U}", "YReverseMotion = ", $YReverseMotion, "; bool\n"
+FILEWRITE $datafile "{#F}", "XOffset = ", -$xStart*((-1)**$ReverseMotionX), "; float\n"
+FILEWRITE $datafile "{#F}", "YOffset = ", -$yStart*((-1)**$ReverseMotionY), "; float\n"
+FILEWRITE $datafile "{#F}", "dX = ", $x_dis, "; float\n"
+FILEWRITE $datafile "{#F}", "dY = ", $y_dis, "; float"
+
+FILECLOSE $datafile
+
+$Nachricht = MSGBOX DF_ICON_CRITICAL + DF_MSGBOX_OKONLY, "Please provide the file " + $filename + "located on the desktop to the mechanical calibration file maker."
