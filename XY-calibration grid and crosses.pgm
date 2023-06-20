@@ -2,7 +2,7 @@ DVAR $x_num, $y_num, $x_dis, $y_dis, $x_end, $y_end, $mech_speed, $skywrite_x, $
 DVAR $opt_speed, $v_pos, $u_pos, $skywrite_u, $skywrite_v, $u_kreuz_l, $u_kreuz_r, $v_kreuz_o, $v_kreuz_u $u_l_s_l, $v_l_s_u, $u_l_s_r, $v_l_s_o, $x_count, $y_count
 DVAR $xStart, $yStart, $zStart
 DVAR $Nachricht
-DVAR $AxisIdxX, $AxisIdxY, $XReverseMotion, $YReverseMotion, $datafile, $filename
+DVAR $AxisIdxX, $AxisIdxY, $XReverseMotion, $YReverseMotion, $datafile
 
 // With IPG Setup
 G90 G08 G01 U0 V0 F100
@@ -11,15 +11,15 @@ G90 G08 G01 U0 V0 F100
 $xStart = 90
 $yStart = 20
 $zStart = Fok+0.1
-G90 G01 X$xStart Y$yStart Z$zStart
+G90 G01 X$xStart Y$yStart Z$zStart F10
 
 VELOCITY ON
 G359
 POSOFFSET SET X0 Y0
 //Variable to define before lasering the grid
-$mech_speed = 1
+$mech_speed = 1000//1
 $opt_speed = 200
-$x_num = 13
+$x_num = 1//13
 $y_num = $x_num
 $x_dis = 2.5
 $y_dis = 2.5
@@ -47,9 +47,9 @@ F$mech_speed
 REPEAT $x_num 
 	G90 G08 G01 X-$x_l_s
 	G90 G08 G01 X-$x_end
-	L1
+	//L1
 	G90 G08 G01 X$x_end
-	L0
+	//L0
 	G90 G08 G01 X$x_l_s
 	G91 G08 G01 Y-$y_dis
 END REPEAT
@@ -63,9 +63,9 @@ F$mech_speed
 REPEAT $y_num 
 	G90 G08 G01 Y-$y_l_s
 	G90 G08 G01 Y-$y_end
-	L1
+	//L1
 	G90 G08 G01 Y$y_end
-	L0
+	//L0
 	G90 G08 G01 Y$y_l_s
 	G91 G08 G01 X-$x_dis
 END REPEAT
@@ -102,17 +102,17 @@ REPEAT 1
 	// l,o nach r,u
 	G90 G01 U$u_l_s_l V$v_l_s_o
 	G90 G01 U$u_kreuz_l V$v_kreuz_o
-	L1
+	//L1
 	G90 G01 U$u_kreuz_r V$v_kreuz_u
-	L0
+	//L0
 	G90 G01 U$u_l_s_r V$v_l_s_u
 	
 	// r,o nach l,u
 	G90 G01 U$u_l_s_r+0.2 V$v_l_s_o+0.2
 	G90 G01 U$u_kreuz_r+0.2 V$v_kreuz_o+0.2
-	L1
+	//L1
 	G90 G01 U$u_kreuz_l V$v_kreuz_u
-	L0
+	//L0
 	G90 G01 U$u_l_s_l V$v_l_s_u
 	
 	VELOCITY OFF
@@ -122,26 +122,27 @@ END REPEAT
 ///////////////////////////////////////////////////////////////
 
 // Export System information for calibration file maker
-$filename = "Mech_Calibration_Config_#DT.txt"
-$datafile = FILEOPEN "%UserProfile%\Desktop\"+$filename, 0
+$strtask[0] = MAKESTRING "Mech_Calibration_Config_#DT.txt"
+$strtask[1] = "C:\Users\Public\Documents\Aerotech\A3200\User Files\File Output\" + $strtask[0]
+$datafile = FILEOPEN $strtask[1], 0
 
 // Get Axis indices
-$AxisIdxX = MASKTODOUBLE X
-$AxisIdxY = MASKTODOUBLE Y
+$AxisIdxX = 0
+$AxisIdxY = 1
 
 // Get reverse motion direction
-$XReverseMotion = GETPARMSTRING $AxisIdxX PARAMETERID_ReverseMotionDirection
-$YReverseMotion = GETPARMSTRING $AxisIdxY PARAMETERID_ReverseMotionDirection
+$XReverseMotion = ReverseMotionDirection.@$AxisIdxX
+$YReverseMotion = ReverseMotionDirection.@$AxisIdxY
 
-FILEWRITE $datafile "{#U}", "XIndex = ", $AxisIdxX+1, "; int\n"
-FILEWRITE $datafile "{#U}", "YIndex = ", $AxisIdxY+1, "; int\n"
-FILEWRITE $datafile "{#U}", "XReverseMotion = ", $XReverseMotion, "; bool\n"
-FILEWRITE $datafile "{#U}", "YReverseMotion = ", $YReverseMotion, "; bool\n"
-FILEWRITE $datafile "{#F}", "XOffset = ", -$xStart*((-1)**$ReverseMotionX), "; float\n"
-FILEWRITE $datafile "{#F}", "YOffset = ", -$yStart*((-1)**$ReverseMotionY), "; float\n"
-FILEWRITE $datafile "{#F}", "dX = ", $x_dis, "; float\n"
+FILEWRITE $datafile "{#U}", "XIndex = ", $AxisIdxX, "; int"
+FILEWRITE $datafile "{#U}", "YIndex = ", $AxisIdxY, "; int"
+FILEWRITE $datafile "{#U}", "XReverseMotion = ", $XReverseMotion, "; bool"
+FILEWRITE $datafile "{#U}", "YReverseMotion = ", $YReverseMotion, "; bool"
+FILEWRITE $datafile "{#F}", "XOffset = ", -$xStart*((-1)**$XReverseMotion), "; float"
+FILEWRITE $datafile "{#F}", "YOffset = ", -$yStart*((-1)**$YReverseMotion), "; float"
+FILEWRITE $datafile "{#F}", "dX = ", $x_dis, "; float"
 FILEWRITE $datafile "{#F}", "dY = ", $y_dis, "; float"
 
 FILECLOSE $datafile
 
-$Nachricht = MSGBOX DF_ICON_CRITICAL + DF_MSGBOX_OKONLY, "Please provide the file " + $filename + "located on the desktop to the mechanical calibration file maker."
+$Nachricht = MSGBOX DF_ICON_INFORMATION + DF_MSGBOX_OKONLY, "Please provide the file ", $strtask[0], "located in the folder File Output in the User Files to the mechanical calibration file maker."
