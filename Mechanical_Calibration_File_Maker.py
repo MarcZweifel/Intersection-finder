@@ -81,7 +81,7 @@ def aerotech_exporter(deviations, sys_config_dict):
     XOffset = sys_config_dict["XOffset"]-(nx-1-deviations.zero_index[0])*dlx
     YOffset = sys_config_dict["YOffset"]-(ny-1-deviations.zero_index[1])*dly
 
-    corrections[:,:,:] = deviations.intersections[:,:,:]
+    corrections = deviations.intersections
     if XReverseMotion:
         corrections[0,:,:] = -corrections[0,:,:]
         dlx = -dlx
@@ -100,7 +100,7 @@ def aerotech_exporter(deviations, sys_config_dict):
         
         for i in range(ny-1,-1,-1):
             for j in range(nx):
-                cal_file.write(f"{corrections[0,i,j]}    {corrections[1,i,j]}          ")
+                cal_file.write(f"{corrections[0,i,j]:.6f}    {corrections[1,i,j]:.6f}          ")
             cal_file.write("\n")
 
         cal_file.write(":END\n")
@@ -137,8 +137,8 @@ meas_grid.move_origin_to_zero()
 
 # Define the distance between x rows and y columns
 
-dlx = sys_config_dict["dX"]
-dly = sys_config_dict["dY"]
+dlx = system_configuration["dX"]
+dly = system_configuration["dY"]
 
 ideal_grid = create_ideal_grid(meas_grid, dlx, dly)
 
@@ -184,7 +184,7 @@ rbf3_x = Rbf(ix, iy, dx, function="multiquadric", smooth=smoothing)
 #counts_per_unit = int(input("Input counts per unit of the scanner:\n"))
 
 nx = ideal_grid.grid_size.x
-ny = ideal_grid-grid_size.y
+ny = ideal_grid.grid_size.y
 
 xs = np.linspace(-(nx-1)//2*dlx, (nx-1)//2*dlx, nx) # some extrapolation to negative numbers // used to be +/- 22.474
 ys = np.linspace(-(ny-1)//2*dly, (ny-1)//2*dly, ny) # some extrapolation to negative numbers
