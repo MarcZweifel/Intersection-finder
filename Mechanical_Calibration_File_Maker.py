@@ -81,7 +81,7 @@ def aerotech_exporter(deviations, sys_config_dict):
     XOffset = sys_config_dict["XOffset"]-(nx-1-deviations.zero_index[0])*dlx
     YOffset = sys_config_dict["YOffset"]-(ny-1-deviations.zero_index[1])*dly
 
-    corrections[:,:,:] = deviations.intersections[:,:,:]
+    corrections = deviations.intersections
     if XReverseMotion:
         corrections[0,:,:] = -corrections[0,:,:]
         dlx = -dlx
@@ -95,7 +95,7 @@ def aerotech_exporter(deviations, sys_config_dict):
     with open(file_path, "w") as cal_file:
         cal_file.write("'        RowAxis ColumnAxis OutputAxis1 OutputAxis2 SampDistRow SampDistCol NumCols\n")
         cal_file.write(f":START2D    {YIndex}         {XIndex}          {XIndex}           {YIndex}          {dly}          {dlx}      {nx}\n")
-        cal_file.write(f":START2D POSUNIT=PRIMARY CORUNIT=PRIMARY OFFSETROW={YOffset:.6f} OFFSETCOL={XOffset}\n")
+        cal_file.write(f":START2D POSUNIT=PRIMARY CORUNIT=PRIMARY OFFSETROW={YOffset:.6f} OFFSETCOL={XOffset:.6f}\n")
         
         for i in range(ny-1,-1,-1):
             for j in range(nx):
