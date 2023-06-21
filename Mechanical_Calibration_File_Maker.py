@@ -95,8 +95,7 @@ def aerotech_exporter(deviations, sys_config_dict):
     with open(file_path, "w") as cal_file:
         cal_file.write("'        RowAxis ColumnAxis OutputAxis1 OutputAxis2 SampDistRow SampDistCol NumCols\n")
         cal_file.write(f":START2D    {YIndex}         {XIndex}          {XIndex}           {YIndex}          {dly}          {dlx}      {nx}\n")
-        cal_file.write(f"OFFSETROW={YOffset} OFFSETCOL={XOffset}")
-        cal_file.write(":START2D POSUNIT=PRIMARY CORUNIT=PRIMARY OFFSETROW=0.0 OFFSETCOL=0.0\n")
+        cal_file.write(f":START2D POSUNIT=PRIMARY CORUNIT=PRIMARY OFFSETROW={YOffset:.6f} OFFSETCOL={XOffset}\n")
         
         for i in range(ny-1,-1,-1):
             for j in range(nx):
