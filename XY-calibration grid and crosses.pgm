@@ -127,8 +127,11 @@ $strtask[1] = "C:\Users\Public\Documents\Aerotech\A3200\User Files\File Output\"
 $datafile = FILEOPEN $strtask[1], 0
 
 // Get Axis indices
-$AxisIdxX = 0
-$AxisIdxY = 1
+$AxisIdxX = MASKTODBL X
+$AxisIdxY = MASKTODBL Y
+
+$AxisIdxX = MASKTOINDEX($AxisIdxX)
+$AxisIdxY = MASKTOINDEX($AxisIdxY)
 
 // Get reverse motion direction
 $XReverseMotion = ReverseMotionDirection.@$AxisIdxX
