@@ -5,15 +5,15 @@ DVAR $Nachricht
 DVAR $AxisIdxX, $AxisIdxY, $XReverseMotion, $YReverseMotion, $datafile
 
 // With IPG Setup
-// IPG 20W @ 50%
-// Pulse frequency: 15 kHz
+// IPG 20W @ 100%
+// Pulse frequency: 3 kHz
 
 POSOFFSET CLEAR X Y Z U V
 G90 G08 G01 U0 V0 F100
 // With IPG Setup
 // Absolute position of the grid zero in machine coordinates
-$xStart = 90
-$yStart = 20
+$xStart = 106
+$yStart = -31
 $zStart = Fok+0.1
 G90 G01 X$xStart Y$yStart Z$zStart F10
 
@@ -21,9 +21,9 @@ VELOCITY ON
 G359
 POSOFFSET SET X0 Y0
 //Variable to define before lasering the grid
-$mech_speed = 20
-$opt_speed = 20 //400
-$x_num = 13
+$mech_speed = 4
+$opt_speed = 4 //400
+$x_num = 5 //13
 $y_num = $x_num
 $x_dis = 2.5
 $y_dis = 2.5
@@ -48,7 +48,7 @@ CRITICAL START
 VELOCITY ON
 G90 G08 G01 Y$y_end
 F$mech_speed
-REPEAT $x_num 
+REPEAT (($x_num-1)/2)
 	G90 G08 G01 X-$x_l_s
 	G90 G08 G01 X-$x_end
 	L1
@@ -56,7 +56,21 @@ REPEAT $x_num
 	L0
 	G90 G08 G01 X$x_l_s
 	G91 G08 G01 Y-$y_dis
+	
+	G90 G08 G01 X$x_l_s
+	G90 G08 G01 X$x_end
+	L1
+	G90 G08 G01 X-$x_end
+	L0
+	G90 G08 G01 X-$x_l_s
+	G91 G08 G01 Y-$y_dis
 END REPEAT
+G90 G08 G01 X-$x_l_s
+G90 G08 G01 X-$x_end
+L1
+G90 G08 G01 X$x_end
+L0
+G90 G08 G01 X$x_l_s
 
 CRITICAL END
 
@@ -64,7 +78,7 @@ CRITICAL END
 CRITICAL START
 G90 G08 G01 X$x_end
 F$mech_speed
-REPEAT $y_num 
+REPEAT (($y_num-1)/2) 
 	G90 G08 G01 Y-$y_l_s
 	G90 G08 G01 Y-$y_end
 	L1
@@ -72,7 +86,24 @@ REPEAT $y_num
 	L0
 	G90 G08 G01 Y$y_l_s
 	G91 G08 G01 X-$x_dis
+	
+	G90 G08 G01 Y$y_l_s
+	G90 G08 G01 Y$y_end
+	L1
+	G90 G08 G01 Y-$y_end
+	L0
+	G90 G08 G01 Y-$y_l_s
+	G91 G08 G01 X-$x_dis
 END REPEAT
+
+G90 G08 G01 Y-$y_l_s
+G90 G08 G01 Y-$y_end
+L1
+G90 G08 G01 Y$y_end
+L0
+G90 G08 G01 Y$y_l_s
+
+
 G90 G08 G01 X0 Y0
 VELOCITY OFF
 CRITICAL END
