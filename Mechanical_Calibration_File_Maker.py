@@ -69,8 +69,8 @@ def aerotech_exporter(deviations, sys_config_dict):
     if file_path[-4:]!=".cal":
             file_path = file_path + ".cal"
     
-    XIndex = sys_config_dict["XIndex"]
-    YIndex = sys_config_dict["YIndex"]
+    XIndex = sys_config_dict["XIndex"]+1
+    YIndex = sys_config_dict["YIndex"]+1
     XReverseMotion = sys_config_dict["XReverseMotion"]
     YReverseMotion = sys_config_dict["YReverseMotion"]
 
@@ -95,8 +95,7 @@ def aerotech_exporter(deviations, sys_config_dict):
     with open(file_path, "w") as cal_file:
         cal_file.write("'        RowAxis ColumnAxis OutputAxis1 OutputAxis2 SampDistRow SampDistCol NumCols\n")
         cal_file.write(f":START2D    {YIndex}         {XIndex}          {XIndex}           {YIndex}          {dly}          {dlx}      {nx}\n")
-        cal_file.write(f"OFFSETROW={YOffset} OFFSETCOL={XOffset}")
-        cal_file.write(":START2D POSUNIT=PRIMARY CORUNIT=PRIMARY OFFSETROW=0.0 OFFSETCOL=0.0\n")
+        cal_file.write(f":START2D POSUNIT=PRIMARY CORUNIT=PRIMARY OFFSETROW={YOffset:.6f} OFFSETCOL={XOffset:.6f}\n")
         
         for i in range(ny-1,-1,-1):
             for j in range(nx):

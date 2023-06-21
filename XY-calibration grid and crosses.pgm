@@ -23,7 +23,7 @@ POSOFFSET SET X0 Y0
 //Variable to define before lasering the grid
 $mech_speed = 4
 $opt_speed = 4 //400
-$x_num = 5 //13
+$x_num = 13
 $y_num = $x_num
 $x_dis = 2.5
 $y_dis = 2.5
