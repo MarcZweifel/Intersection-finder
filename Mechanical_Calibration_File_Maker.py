@@ -69,8 +69,8 @@ def aerotech_exporter(deviations, sys_config_dict):
     if file_path[-4:]!=".cal":
             file_path = file_path + ".cal"
     
-    XIndex = sys_config_dict["XIndex"]
-    YIndex = sys_config_dict["YIndex"]
+    XIndex = sys_config_dict["XIndex"]+1
+    YIndex = sys_config_dict["YIndex"]+1
     XReverseMotion = sys_config_dict["XReverseMotion"]
     YReverseMotion = sys_config_dict["YReverseMotion"]
 
