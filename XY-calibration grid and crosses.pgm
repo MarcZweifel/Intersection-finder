@@ -124,12 +124,12 @@ END REPEAT
 // Export System information for calibration file maker
 $strtask[0] = MAKESTRING "Mech_Calibration_Config_#DT.txt"
 $strtask[1] = "C:\Users\Public\Documents\Aerotech\A3200\User Files\File Output\" + $strtask[0]
+
 $datafile = FILEOPEN $strtask[1], 0
 
 // Get Axis indices
 $AxisIdxX = MASKTODBL X
 $AxisIdxY = MASKTODBL Y
-
 $AxisIdxX = MASKTOINDEX($AxisIdxX)
 $AxisIdxY = MASKTOINDEX($AxisIdxY)
 
