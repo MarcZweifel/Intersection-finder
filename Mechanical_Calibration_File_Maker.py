@@ -78,8 +78,8 @@ def aerotech_exporter(deviations, sys_config_dict):
     dly = sys_config_dict["dY"]
     nx = deviations.grid_size.x
     ny = deviations.grid_size.y
-    XOffset = sys_config_dict["XOffset"]-(nx-1-deviations.zero_index[0])*dlx
-    YOffset = sys_config_dict["YOffset"]-(ny-1-deviations.zero_index[1])*dly
+    XOffset = sys_config_dict["XOffset"]+(nx-1-deviations.zero_index[0])*dlx
+    YOffset = sys_config_dict["YOffset"]+(ny-1-deviations.zero_index[1])*dly
 
     corrections = deviations.intersections
     if XReverseMotion:
