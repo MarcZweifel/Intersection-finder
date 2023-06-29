@@ -8,6 +8,7 @@ from scipy.interpolate import interp1d
 from mpl_toolkits.mplot3d import Axes3D
 from scipy import interpolate
 from scipy.interpolate import Rbf
+from datetime import date
 import sys
 
 from imageprocessor import grid
@@ -93,6 +94,8 @@ def aerotech_exporter(deviations, sys_config_dict):
         YOffset = -YOffset
     
     with open(file_path, "w") as cal_file:
+        cal_file.write("' Made with the mechanical calibration file maker software.\n")
+        cal_file.write(f"' Date: {date.today()}\n'\n")
         cal_file.write("'        RowAxis ColumnAxis OutputAxis1 OutputAxis2 SampDistRow SampDistCol NumCols\n")
         cal_file.write(f":START2D    {YIndex}         {XIndex}          {XIndex}           {YIndex}          {dly}          {dlx}      {nx}\n")
         cal_file.write(f":START2D POSUNIT=PRIMARY CORUNIT=PRIMARY OFFSETROW={YOffset} OFFSETCOL={XOffset}\n")
@@ -103,7 +106,7 @@ def aerotech_exporter(deviations, sys_config_dict):
             cal_file.write("\n")
 
         cal_file.write(":END\n")
-        cal_file.write("'\n'\n' Notes:\n' X-axis is axis 1, Y-axis is axis 2.\n' All distances are in mm.\n")
+        cal_file.write(f"'\n'\n' Notes:\n' X-axis is axis {XIndex}, Y-axis is axis {YIndex}.\n' All distances are in mm.\n")
         cal_file.write("' Correction values outside of the calibration table are clipped to the outermost correction value.")
 
 #----------------------------------------------------------------------------------------------------------------------
@@ -175,8 +178,8 @@ ax.legend()
 plt.show()
 ideal_grid.create_mask(mask=meas_grid.get_mask())
 
-smoothing = float(input("Input the smoothing factor for the interpolation:\n"))
-
+# smoothing = float(input("Input the smoothing factor for the interpolation:\n"))
+smoothing = 2
 rbf3_y = Rbf(ix, iy, dy, function="multiquadric", smooth=smoothing)
 rbf3_x = Rbf(ix, iy, dx, function="multiquadric", smooth=smoothing)
 
