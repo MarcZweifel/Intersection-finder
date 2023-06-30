@@ -201,6 +201,19 @@ znew_x = cal_deviations.get_active()[:,0]
 # create 3D plot
 fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
+ax.scatter(ix, iy, dx, color="r", marker='o')
+ax.scatter(xnew, ynew, znew_x, color="b", marker='o')
+# set plot labels and title
+ax.set_xlabel('X')
+ax.set_ylabel('Y')
+ax.set_zlabel('Z')
+ax.set_title('3D Plot of Distance in X')
+# show plot
+plt.show()
+
+# create 3D plot
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
 ax.scatter(ix, iy, dy, color="r", marker='o')
 ax.scatter(xnew, ynew, znew_y, color="b", marker='o')
 # set plot labels and title
@@ -211,18 +224,7 @@ ax.set_title('3D Plot of Distance in Y')
 # show plot
 plt.show()
 
-# create 3D plot
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
-ax.scatter(ix, iy, dx, color="r", marker='o')
-ax.scatter(xnew, ynew, znew_x, color="b", marker='o')
-# set plot labels and title
-ax.set_xlabel('X')
-ax.set_ylabel('Y')
-ax.set_zlabel('Z')
-ax.set_title('3D Plot of Distance in X')
-# show plot
-plt.show()
+
 
 if not first_calibration_flag:
     cal_deviations.intersections[:,:,:] += prev_cal_dev.intersections[:,:,:]
