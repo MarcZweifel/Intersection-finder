@@ -1,18 +1,36 @@
-DVAR $x_num, $y_num, $x_dis, $y_dis, $x_end, $y_end, $mech_speed, $skywrite_x, $skywrite_y, $skywrite_u, $skywrite_v, $x_l_s, $y_l_s
+DVAR $x_num, $y_num, $x_dis, $y_dis, $x_end, $y_end, $mech_speed, $skywrite_x, $skywrite_y, $skywrite_u, $skywrite_v, $x_l_s, $y_l_s, $Line_Overhang
 DVAR $opt_speed, $v_pos, $u_pos, $skywrite_u, $skywrite_v, $u_kreuz_l, $u_kreuz_r, $v_kreuz_o, $v_kreuz_u $u_l_s_l, $v_l_s_u, $u_l_s_r, $v_l_s_o, $x_count, $y_count
+DVAR $xStart, $yStart, $zStart
 DVAR $Nachricht
+DVAR $AxisIdxX, $AxisIdxY, $XReverseMotion, $YReverseMotion, $datafile
 
-// Laser power: IPG 20W @ 50%
-// Pulse frequency: 300 kHz
+// With IPG Setup
+// IPG 20W @ 50%
+// Pulse frequency: 15 kHz
+
+// With Carbide Setup
+// Pulse frequency: 100 kHz
+P=1
+AIR_ON
+FLOW_ON
+POSOFFSET CLEAR X Y Z U V
+G90 G08 G01 U0 V0 F100
+
+// Absolute position of the grid zero in machine coordinates
+$xStart = 67
+$yStart = 0
+$zStart = 115.6
+G90 G01 X$xStart Y$yStart Z$zStart F10
 
 VELOCITY ON
 G359
-
+POSOFFSET SET X0 Y0
 //Variable to define before lasering the grid
-$opt_speed = 400  //was 200
-$x_num = 17
+$mech_speed = 10
+$opt_speed = 250 //400
+$x_num = 17 //13
 $y_num = $x_num
-$x_dis = 2.5	// Results in a 40mm x 40mm field
+$x_dis = 2.5
 $y_dis = 2.5
 
 //Global variable only define if you know what they mean
@@ -20,12 +38,91 @@ $skywrite_x = 1
 $skywrite_y = 1
 $skywrite_u = 0.3
 $skywrite_v = 0.3
+$Line_Overhang = 1
 
 // Variable which are generated and should not be changed
-$x_end = ($x_num-1) * $x_dis / 2
-$y_end = ($y_num-1) * $y_dis / 2
+$x_end = ($x_num-1) * $x_dis / 2 + $Line_Overhang
+$y_end = ($y_num-1) * $y_dis / 2 + $Line_Overhang
 $x_l_s = $x_end + $skywrite_x
 $y_l_s = $y_end + $skywrite_y
+
+///////////////////////////////////////////////////////////////Lines in x- and y direction with mechanical axis
+
+F$opt_speed
+' lines along the x-axis
+CRITICAL START
+VELOCITY ON
+G90 G08 G01 V$y_end-$Line_Overhang
+
+REPEAT ($x_num-1)/2
+	G90 G08 G01 U-$x_l_s
+	G90 G08 G01 U-$x_end
+	L1
+	G90 G08 G01 U$x_end
+	L0
+	G90 G08 G01 U$x_l_s
+	G91 G08 G01 V-$y_dis
+	
+	G90 G08 G01 U$x_l_s
+	G90 G08 G01 U$x_end
+	L1
+	G90 G08 G01 U-$x_end
+	L0
+	G90 G08 G01 U-$x_l_s
+	G91 G08 G01 V-$y_dis
+END REPEAT
+
+G90 G08 G01 U-$x_l_s
+G90 G08 G01 U-$x_end
+L1
+G90 G08 G01 U$x_end
+L0
+G90 G08 G01 U$x_l_s
+G91 G08 G01 V-$y_dis
+
+CRITICAL END
+
+' lines along the y-axis
+CRITICAL START
+G90 G08 G01 U$x_end-$Line_Overhang
+F$opt_speed
+REPEAT ($y_num-1)/2 
+	G90 G08 G01 V-$y_l_s
+	G90 G08 G01 V-$y_end
+	L1
+	G90 G08 G01 V$y_end
+	L0
+	G90 G08 G01 V$y_l_s
+	G91 G08 G01 U-$x_dis
+	
+	G90 G08 G01 V$y_l_s
+	G90 G08 G01 V$y_end
+	L1
+	G90 G08 G01 V-$y_end
+	L0
+	G90 G08 G01 V-$y_l_s
+	G91 G08 G01 U-$x_dis
+END REPEAT
+
+G90 G08 G01 V-$y_l_s
+G90 G08 G01 V-$y_end
+L1
+G90 G08 G01 V$y_end
+L0
+G90 G08 G01 V$y_l_s
+G91 G08 G01 U-$x_dis
+
+G90 G08 G01 U0 V0
+VELOCITY OFF
+CRITICAL END
+///////////////////////////////////////////////////////////////
+
+VELOCITY ON
+G360
+$x_count = 0
+$y_count = 1
+$skywrite_u = 0.2
+$skywrite_v = 0.2
 
 $u_kreuz_l = - (0.3 / 2)
 $u_kreuz_r = (0.3 / 2)
@@ -36,12 +133,11 @@ $u_l_s_r = $u_kreuz_r + $skywrite_u
 $v_l_s_o = $v_kreuz_o + $skywrite_v
 $v_l_s_u = $v_kreuz_u - $skywrite_v
 
-G90 G0 Z(Fok)
+F$opt_speed
 
 REPEAT 1
 	VELOCITY ON
 	CRITICAL START
-	F$opt_speed
 	// l,o nach r,u
 	G90 G01 U$u_l_s_l V$v_l_s_o
 	G90 G01 U$u_kreuz_l V$v_kreuz_o
@@ -61,40 +157,39 @@ REPEAT 1
 	VELOCITY OFF
 	CRITICAL END
 END REPEAT
-L0
-DWELL 1
-///////////////////////////////////////////////////////////////Lines in u- and v direction with optical axis
-' lines along the x-axis
-CRITICAL START
-VELOCITY ON
-F$opt_speed
-G90 G08 G01 V$y_end
-REPEAT $x_num 
-	G90 G08 G01 U-$x_l_s
-	G90 G08 G01 U-$x_end
-	L1
-	G90 G08 G01 U$x_end
-	L0
-	G90 G08 G01 U$x_l_s
-	G91 G08 G01 V-$y_dis
-END REPEAT
-CRITICAL END
 
-' lines along the y-axis
-CRITICAL START
-G90 G08 G01 U$x_end
-F$opt_speed
-REPEAT $y_num 
-	G90 G08 G01 V-$y_l_s
-	G90 G08 G01 V-$y_end
-	L1
-	G90 G08 G01 V$y_end
-	L0
-	G90 G08 G01 V$y_l_s
-	G91 G08 G01 U-$x_dis
-END REPEAT
-G90 G08 G01 U0 V0
-VELOCITY OFF
-CRITICAL END
+G90 G0 U0 V0
+POSOFFSET CLEAR X Y U V
+AIR_OFF
+FLOW_OFF
+P=0
 ///////////////////////////////////////////////////////////////
 
+// Export System information for calibration file maker
+$strtask[0] = MAKESTRING "Opt_Calibration_Config_#DT.txt"
+$strtask[1] = "C:\Users\Public\Documents\Aerotech\A3200\User Files\Zweifel\" + $strtask[0]
+
+$datafile = FILEOPEN $strtask[1], 0
+
+// Get Axis indices
+$AxisIdxX = MASKTODBL X
+$AxisIdxY = MASKTODBL Y
+$AxisIdxX = MASKTOINDEX($AxisIdxX)
+$AxisIdxY = MASKTOINDEX($AxisIdxY)
+
+// Get reverse motion direction
+$XReverseMotion = ReverseMotionDirection.@$AxisIdxX
+$YReverseMotion = ReverseMotionDirection.@$AxisIdxY
+
+FILEWRITE $datafile "{#U}", "XIndex = ", $AxisIdxX, "; int"
+FILEWRITE $datafile "{#U}", "YIndex = ", $AxisIdxY, "; int"
+FILEWRITE $datafile "{#U}", "XReverseMotion = ", $XReverseMotion, "; bool"
+FILEWRITE $datafile "{#U}", "YReverseMotion = ", $YReverseMotion, "; bool"
+FILEWRITE $datafile "{#F}", "XOffset = ", -$xStart*((-1)**$XReverseMotion), "; float"
+FILEWRITE $datafile "{#F}", "YOffset = ", -$yStart*((-1)**$YReverseMotion), "; float"
+FILEWRITE $datafile "{#F}", "dX = ", $x_dis, "; float"
+FILEWRITE $datafile "{#F}", "dY = ", $y_dis, "; float"
+
+FILECLOSE $datafile
+
+$Nachricht = MSGBOX DF_ICON_INFORMATION + DF_MSGBOX_OKONLY, "Please provide the file ", $strtask[0], "located in the folder File Output in the User Files to the mechanical calibration file maker."

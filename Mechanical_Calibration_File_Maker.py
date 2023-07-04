@@ -224,8 +224,6 @@ ax.set_title('3D Plot of Distance in Y')
 # show plot
 plt.show()
 
-
-
 if not first_calibration_flag:
     cal_deviations.intersections[:,:,:] += prev_cal_dev.intersections[:,:,:]
 

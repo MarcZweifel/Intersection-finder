@@ -1,29 +1,34 @@
-DVAR $x_num, $y_num, $x_dis, $y_dis, $x_end, $y_end, $mech_speed, $skywrite_x, $skywrite_y, $skywrite_u, $skywrite_v, $x_l_s, $y_l_s
+DVAR $x_num, $y_num, $x_dis, $y_dis, $x_end, $y_end, $mech_speed, $skywrite_x, $skywrite_y, $skywrite_u, $skywrite_v, $x_l_s, $y_l_s, $Line_Overhang
 DVAR $opt_speed, $v_pos, $u_pos, $skywrite_u, $skywrite_v, $u_kreuz_l, $u_kreuz_r, $v_kreuz_o, $v_kreuz_u $u_l_s_l, $v_l_s_u, $u_l_s_r, $v_l_s_o, $x_count, $y_count
 DVAR $xStart, $yStart, $zStart
 DVAR $Nachricht
-DVAR $AxisIdxX, $AxisIdxY, $XReverseMotion, $YReverseMotion, $datafile
+DVAR $AxisIdxX, $AxisIdxY, $XReverseMotion, $YReverseMotion, $datafile, $HomePositionSetX, $HomePositionSetY
 
 // With IPG Setup
-// IPG 20W @ 100%
-// Pulse frequency: 3 kHz
+// IPG 20W @ 50%
+// Pulse frequency: 15 kHz
 
+// With Carbide Setup
+// Pulse frequency: 100 kHz with PP-divider 25
+P=1
+AIR_ON
+FLOW_ON
 POSOFFSET CLEAR X Y Z U V
 G90 G08 G01 U0 V0 F100
 // With IPG Setup
 // Absolute position of the grid zero in machine coordinates
-$xStart = 106
-$yStart = -31
-$zStart = Fok+0.1
+$xStart = 67
+$yStart = 0
+$zStart = 115.6
 G90 G01 X$xStart Y$yStart Z$zStart F10
 
 VELOCITY ON
 G359
 POSOFFSET SET X0 Y0
 //Variable to define before lasering the grid
-$mech_speed = 4
-$opt_speed = 4 //400
-$x_num = 13
+$mech_speed = 10
+$opt_speed = 10 //400
+$x_num = 17 //13
 $y_num = $x_num
 $x_dis = 2.5
 $y_dis = 2.5
@@ -33,10 +38,11 @@ $skywrite_x = 1
 $skywrite_y = 1
 $skywrite_u = 0.3
 $skywrite_v = 0.3
+$Line_Overhang = 1
 
 // Variable which are generated and should not be changed
-$x_end = ($x_num-1) * $x_dis / 2
-$y_end = ($y_num-1) * $y_dis / 2
+$x_end = ($x_num-1) * $x_dis / 2 + $Line_Overhang
+$y_end = ($y_num-1) * $y_dis / 2 + $Line_Overhang
 $x_l_s = $x_end + $skywrite_x
 $y_l_s = $y_end + $skywrite_y
 
@@ -46,9 +52,9 @@ F$mech_speed
 ' lines along the x-axis
 CRITICAL START
 VELOCITY ON
-G90 G08 G01 Y$y_end
+G90 G08 G01 Y$y_end-$Line_Overhang
 F$mech_speed
-REPEAT (($x_num-1)/2)
+REPEAT ($x_num-1)/2
 	G90 G08 G01 X-$x_l_s
 	G90 G08 G01 X-$x_end
 	L1
@@ -65,20 +71,22 @@ REPEAT (($x_num-1)/2)
 	G90 G08 G01 X-$x_l_s
 	G91 G08 G01 Y-$y_dis
 END REPEAT
+
 G90 G08 G01 X-$x_l_s
 G90 G08 G01 X-$x_end
 L1
 G90 G08 G01 X$x_end
 L0
 G90 G08 G01 X$x_l_s
+G91 G08 G01 Y-$y_dis
 
 CRITICAL END
 
 ' lines along the y-axis
 CRITICAL START
-G90 G08 G01 X$x_end
+G90 G08 G01 X$x_end-$Line_Overhang
 F$mech_speed
-REPEAT (($y_num-1)/2) 
+REPEAT ($y_num-1)/2 
 	G90 G08 G01 Y-$y_l_s
 	G90 G08 G01 Y-$y_end
 	L1
@@ -102,7 +110,7 @@ L1
 G90 G08 G01 Y$y_end
 L0
 G90 G08 G01 Y$y_l_s
-
+G91 G08 G01 X-$x_dis
 
 G90 G08 G01 X0 Y0
 VELOCITY OFF
@@ -152,12 +160,15 @@ REPEAT 1
 END REPEAT
 
 G90 G0 U0 V0
-
+POSOFFSET CLEAR X Y U V
+AIR_OFF
+FLOW_OFF
+P=0
 ///////////////////////////////////////////////////////////////
 
 // Export System information for calibration file maker
 $strtask[0] = MAKESTRING "Mech_Calibration_Config_#DT.txt"
-$strtask[1] = "C:\Users\Public\Documents\Aerotech\A3200\User Files\File Output\" + $strtask[0]
+$strtask[1] = "C:\Users\Public\Documents\Aerotech\A3200\User Files\Zweifel\" + $strtask[0]
 
 $datafile = FILEOPEN $strtask[1], 0
 
@@ -171,12 +182,16 @@ $AxisIdxY = MASKTOINDEX($AxisIdxY)
 $XReverseMotion = ReverseMotionDirection.@$AxisIdxX
 $YReverseMotion = ReverseMotionDirection.@$AxisIdxY
 
+// Get HomePositionSet
+$HomePositionSetX = HomePositionSet.@$AxisIdxX
+$HomePositionSetY = HomePositionSet.@$AxisIdxY
+
 FILEWRITE $datafile "{#U}", "XIndex = ", $AxisIdxX, "; int"
 FILEWRITE $datafile "{#U}", "YIndex = ", $AxisIdxY, "; int"
 FILEWRITE $datafile "{#U}", "XReverseMotion = ", $XReverseMotion, "; bool"
 FILEWRITE $datafile "{#U}", "YReverseMotion = ", $YReverseMotion, "; bool"
-FILEWRITE $datafile "{#F}", "XOffset = ", -$xStart*((-1)**$XReverseMotion), "; float"
-FILEWRITE $datafile "{#F}", "YOffset = ", -$yStart*((-1)**$YReverseMotion), "; float"
+FILEWRITE $datafile "{#F}", "XOffset = ", $HomePositionSetX - $xStart, "; float"
+FILEWRITE $datafile "{#F}", "YOffset = ", $HomePositionSetX - $yStart, "; float"
 FILEWRITE $datafile "{#F}", "dX = ", $x_dis, "; float"
 FILEWRITE $datafile "{#F}", "dY = ", $y_dis, "; float"
 
