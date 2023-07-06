@@ -191,7 +191,7 @@ FILEWRITE $datafile "{#U}", "YIndex = ", $AxisIdxY, "; int"
 FILEWRITE $datafile "{#U}", "XReverseMotion = ", $XReverseMotion, "; bool"
 FILEWRITE $datafile "{#U}", "YReverseMotion = ", $YReverseMotion, "; bool"
 FILEWRITE $datafile "{#F}", "XOffset = ", $HomePositionSetX - $xStart, "; float"
-FILEWRITE $datafile "{#F}", "YOffset = ", $HomePositionSetX - $yStart, "; float"
+FILEWRITE $datafile "{#F}", "YOffset = ", $HomePositionSetY - $yStart, "; float"
 FILEWRITE $datafile "{#F}", "dX = ", $x_dis, "; float"
 FILEWRITE $datafile "{#F}", "dY = ", $y_dis, "; float"
 
